@@ -1,0 +1,18 @@
+SELECT
+players.id as playerID, players.name as playername, matches.showdown_id, matches.id as matchID, pokemon.name as pkmn_name, items.name as item, abilities.name as ability
+FROM
+players,
+player_matches,
+matches,
+pm_pokemon,
+pokemon,
+abilities,
+items
+WHERE
+players.id = player_matches.player_id AND
+player_matches.match_id = matches.id AND
+player_matches.id = pm_pokemon.player_match_id AND
+pm_pokemon.pokemon_id = pokemon.id AND
+pm_pokemon.ability_id = abilities.id AND
+pm_pokemon.item_id = items.id AND
+players.name = 'evanbrando';
