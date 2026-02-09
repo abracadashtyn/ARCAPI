@@ -50,6 +50,7 @@ class Pokemon(db.Model):
     is_nonstandard: so.Mapped[Optional[str]] = so.mapped_column(sa.String(100))
     base_species_id: so.Mapped[Optional[int]] = so.mapped_column(sa.Integer, sa.ForeignKey('pokemon.id'))
     base_species = so.relationship('Pokemon', remote_side=[id], backref='forms')
+    is_cosmetic_only: so.Mapped[Optional[bool]] = so.mapped_column(sa.Boolean, default=False)
 
     types: so.Mapped[List[PokemonType]] = so.relationship(secondary=pokemon_to_type, back_populates='pokemon')
 
@@ -65,7 +66,8 @@ class Pokemon(db.Model):
             'name': self.name,
             'tier': self.tier,
             'is_nonstandard': self.is_nonstandard,
-            'types': [x.to_dict() for x in self.types]
+            'types': [x.to_dict() for x in self.types],
+            'is_cosmetic_only': self.is_cosmetic_only,
         }
         if self.base_species_id is not None:
             pkmn_dict['base_species'] = {

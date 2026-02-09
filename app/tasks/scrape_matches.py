@@ -1,12 +1,13 @@
 import json
 import logging
 import os
+
+import click
 import requests
-from flask import current_app
 from app.tasks.match_log_parser import MatchLogParser
 
 from app.tasks import bp
-from app.models import Format, Player, Match, PlayerMatch
+from app.models import Format, Match, PlayerMatch
 from app import db
 
 
@@ -16,26 +17,26 @@ def showdown():
     pass
 
 @showdown.command('scrape-new')
-def scrape_new():
+@click.option('--localmode', '-l', 'local_mode', is_flag=True, default=False,
+              help='if true, pulls from showdown data in static test data files, and fails if file does not exist.')
+def scrape_new(local_mode):
     # TODO: set this as a config parameter or something
     game_format = "gen9vgc2026regfbo3"
     game_format_record = Format.get_or_create(game_format)
-
-    # query showdown api for all matches in desired format.
-    list_replays_url = "https://replay.pokemonshowdown.com/search.json"
-    params = {"format": game_format_record.name}
-    response = requests.get(list_replays_url, params=params)
-    if response.status_code != 200:
-        logging.error(f"Something went wrong with web request: {response}")
-        exit(1)
+    if local_mode:
+        # load from local data for testing purposes
+        with open(os.path.join(os.getcwd(), 'app', 'static', 'test_data', 'search.json'), 'r', encoding='utf-8') as f:
+            matches_json = json.load(f)
     else:
-        matches_json = response.json()
-
-    '''
-    # loading from local data for testing purposes
-    with open(os.path.join(os.getcwd(), 'app', 'tasks', 'test_data', 'single_record.json'), 'r', encoding='utf-8') as f:
-        matches_json = json.load(f)
-    '''
+        # query showdown api for all matches in desired format.
+        list_replays_url = "https://replay.pokemonshowdown.com/search.json"
+        params = {"format": game_format_record.name}
+        response = requests.get(list_replays_url, params=params)
+        if response.status_code != 200:
+            logging.error(f"Something went wrong with web request: {response}")
+            exit(1)
+        else:
+            matches_json = response.json()
 
     for match_json in matches_json:
         # parse out numeric id for match
@@ -68,7 +69,7 @@ def scrape_new():
                 # TODO exit or continue once testing is done; already processed match should not re-process
 
             # initialize a log parser to fetch and process the log of the game in question
-            log_parser = MatchLogParser(game_format, showdown_id)
+            log_parser = MatchLogParser(game_format, showdown_id, local_mode)
             match_record.position_in_set = log_parser.get_sequence_in_set()
 
             player1_record, player2_record = log_parser.get_players()

@@ -9,4 +9,4 @@ venv/
 *.db
 *.sqlite
 instance/
-/app/tasks/test_data/
+/app/static/test_data/

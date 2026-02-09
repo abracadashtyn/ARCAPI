@@ -1,3 +1,5 @@
+import json
+
 from flask import request
 from flask_restx import Namespace, fields, Resource
 from sqlalchemy.exc import SQLAlchemyError
@@ -44,7 +46,7 @@ class PokemonList(Resource):
     def get(self):
         page = request.args.get('page', 1, type=int)
         limit = request.args.get('limit', 50, type=int)
-        query = Pokemon.query.order_by(Pokemon.pokedex_number, Pokemon.name)
+        query = Pokemon.query.filter(Pokemon.is_cosmetic_only is False).order_by(Pokemon.pokedex_number, Pokemon.name)
 
         if 'type_ids' in request.args:
             try:
@@ -72,8 +74,16 @@ class PokemonList(Resource):
 
 
 """Fetch details on on particular pokemon by ID"""
+pokemon_form_model = api.model('PokemonForm', {
+    'id': fields.Integer,
+    'pokedex_number': fields.Integer,
+    'name': fields.String,
+    'tier': fields.String,
+    'types': fields.List(fields.Nested(pokemon_type_model)),
+    'is_cosmetic_only': fields.Boolean(),
+})
 pokemon_detail_model = api.inherit('PokemonDetail', pokemon_model, {
-    'match_ids': fields.List(fields.Integer, description='List of matches where this pokemon was used')
+    'forms': fields.List(fields.Nested(pokemon_form_model)),
 })
 pokemon_detail_response = api.model('PokemonDetailResponse', {
     'success': fields.Boolean,
@@ -99,7 +109,18 @@ class PokemonDetail(Resource):
             'success': True,
             'data': pokemon_record.to_dict()
         }
-        response['data']['match_ids'] = [x.player_match.match_id for x in pokemon_record.player_matches]
+
+        # check if this pokemon has any forms, and if so, add to response
+        forms = Pokemon.query.filter(Pokemon.base_species_id == pokemon_record.id).all()
+        if len(forms) > 0:
+            response['data']['forms'] = []
+            for form in forms:
+                form_dict = form.to_dict()
+                if form_dict['is_cosmetic_only']:
+                    form_dict.pop('types')
+                response['data']['forms'].append(form_dict)
+
+        print(json.dumps(response, indent=4))
         return response
 
 

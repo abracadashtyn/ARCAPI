@@ -9,17 +9,17 @@ from app.models import Player, Pokemon, PokemonType, PlayerMatchPokemon, Item, A
 
 
 class MatchLogParser:
-    def __init__(self, game_format_name, showdown_id):
-        replay_log_url = f"https://replay.pokemonshowdown.com/{game_format_name}-{showdown_id}.log"
-        replay_log_response = requests.get(replay_log_url)
-        if replay_log_response.status_code != 200:
-            raise Exception(f"Something went wrong with web request: {replay_log_url}")
-        log_string = replay_log_response.text
-        '''
-        with open(os.path.join(os.getcwd(), 'app', 'tasks', 'test_data', f"{game_format_name}-{showdown_id}.txt"), 'r',
-                  encoding='utf-8') as f:
-            log_string = f.read()'''
-
+    def __init__(self, game_format_name, showdown_id, local=False):
+        if local:
+            file_path = os.path.join(os.getcwd(), 'app', 'static', 'test_data', f'{game_format_name}-{showdown_id}.txt')
+            with open(file_path, 'r', encoding='utf-8') as f:
+                log_string = f.read()
+        else:
+            replay_log_url = f"https://replay.pokemonshowdown.com/{game_format_name}-{showdown_id}.log"
+            replay_log_response = requests.get(replay_log_url)
+            if replay_log_response.status_code != 200:
+                raise Exception(f"Something went wrong with web request: {replay_log_url}")
+            log_string = replay_log_response.text
         self.log_lines = log_string.splitlines()
 
     def clean_and_split_line(self, line):
