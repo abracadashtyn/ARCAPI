@@ -3,8 +3,7 @@ import os
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
-from config.local import LocalConfig
-from config.digitalocean import DigitalOceanConfig
+
 
 db = SQLAlchemy()
 migrate = Migrate()
@@ -15,8 +14,10 @@ def create_app(config_class=None):
     if config_class is None:
         env = os.environ.get('FLASK_ENV', 'development')
         if env == 'production':
+            from config.digitalocean import DigitalOceanConfig
             config_class = DigitalOceanConfig
         else:
+            from config.local import LocalConfig
             config_class = LocalConfig
     app.config.from_object(config_class)
 
