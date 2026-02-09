@@ -13,10 +13,10 @@ class MatchLogParser:
         replay_log_url = f"https://replay.pokemonshowdown.com/{game_format_name}-{showdown_id}.log"
         replay_log_response = requests.get(replay_log_url)
         if replay_log_response.status_code != 200:
-            logging.error(f"Something went wrong with web request: {replay_log_url}")
             raise Exception(f"Something went wrong with web request: {replay_log_url}")
         log_string = replay_log_response.text
-        '''with open(os.path.join(os.getcwd(), 'app', 'tasks', 'test_data', f"{game_format_name}-{showdown_id}.txt"), 'r',
+        '''
+        with open(os.path.join(os.getcwd(), 'app', 'tasks', 'test_data', f"{game_format_name}-{showdown_id}.txt"), 'r',
                   encoding='utf-8') as f:
             log_string = f.read()'''
 
@@ -88,9 +88,35 @@ class MatchLogParser:
                 raise Exception(f"Not able to determine which player team record belongs to. Please check data format.")
 
             for i in range(2, 8):
+                '''
+                will always be of format <pokemon_name>||<item>|<ability>|<moveset>|||<gender>|||<level>|,,,,,<terra_type>]
+                when split on |, 
+                    [0]='<pokemon_name>'
+                    [1]=''
+                    [2]='<item>'
+                    [3]='<ability>'
+                    [4]='<moveset>'
+                    [5]=''
+                    [6]=''
+                    [7]='<gender>'
+                    [8]=''
+                    [9]=''
+                    [10]='<level>'
+                    [11]=',,,,,<terra_type>]'
+                    
+                I'm unsure if the blank fields will ever be populated, or if that's simply formatting.
+                TODO no documentation on this - dig through the code to find out? 
+                for now raise an exception if any one of these fields is non-null to manually check the data
+                '''
                 pkmn_info = [x for x in team_info.group(i).split('|')]
 
-                # first field is the name
+                if len(pkmn_info) != 12:
+                    raise Exception(f"did not parse the expected 12 fields for pokemon team member: {pkmn_info}")
+
+                if any(True for x in [1,5,6,8,9] if pkmn_info[x] != ""):
+                    raise Exception(f"One of the pokemon match info fields expected to be empty is not: {pkmn_info}")
+
+                # name field
                 pokemon_record = Pokemon.query.filter_by(name=pkmn_info[0]).first()
 
                 # if this is a new pokemon record, we also need to add its types from the last field in the log.
@@ -107,25 +133,35 @@ class MatchLogParser:
 
                 pmp_record = PlayerMatchPokemon.get_or_create(pm_record_id, pokemon_record.id)
 
-                #second field is blank in all the test data I saw - might eventually be tera type? for now adding exit to manually validate data
-                if pkmn_info[1] != "":
-                    raise Exception(f"Found value {pkmn_info[1]} in line {team_info.group(i)} - not sure how to handle")
-
-
-                # third field is the item the pokemon is holding
+                # [2] = item the pokemon is holding
                 if pkmn_info[2] != "":
                     pmp_record.item = Item.get_or_create(pkmn_info[2])
 
-                # third field is ability
+                # [3] = ability
                 if pkmn_info[3] != "":
                     pmp_record.ability = Ability.get_or_create(pkmn_info[3])
 
-                # fourth field is moveset
-                if pkmn_info[4] != "":
-                    moves = pkmn_info[4].split(',')
-                    for move in moves:
-                        move_record = Move.get_or_create(move)
-                        if move_record not in pmp_record.moves:
-                            pmp_record.moves.append(move_record)
+                # [4] = moveset. Should always be present so raise exception if this field is blank.
+                if pkmn_info[4] == "":
+                    raise Exception(f"Moveset is null, which should not happen!")
+
+                moves = pkmn_info[4].split(',')
+                for move in moves:
+                    move_record = Move.get_or_create(move)
+                    if move_record not in pmp_record.moves:
+                        pmp_record.moves.append(move_record)
+
+                # [11]=',,,,,<terra_type>]'
+                if pkmn_info[11] != "":
+                    terra_type_name = pkmn_info[11].lstrip(',').rstrip(']')
+                    terra_type_record = PokemonType.query.filter(PokemonType.name == terra_type_name).first()
+
+                    # all pokemon types are already in table and rarely change. If a terra type is found that does not
+                    # already exist in the db, it's more likely the formatting of the log has changed than that this is
+                    # actually a new pokemon type. Raise an exception in this case/
+                    if terra_type_record is None:
+                        raise Exception(f"Could not find terra type '{terra_type_name}'")
+
+                    pmp_record.terra_type = terra_type_record
 
                 db.session.commit()

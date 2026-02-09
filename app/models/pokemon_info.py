@@ -120,8 +120,6 @@ class Ability(db.Model):
     id: so.Mapped[int] = so.mapped_column(autoincrement=True, primary_key=True)
     name: so.Mapped[str] = so.mapped_column(sa.String(50))
 
-    pmp_records: so.Mapped[List['PlayerMatchPokemon']] = so.relationship(back_populates='ability')
-
     def __repr__(self):
         return f"<Ability id:{self.id}, name:{self.name}>"
 
@@ -147,7 +145,6 @@ class Move(db.Model):
     __tablename__ = 'moves'
     id: so.Mapped[int] = so.mapped_column(autoincrement=True, primary_key=True)
     name: so.Mapped[str] = so.mapped_column(sa.String(50))
-    pmp_records: so.Mapped[List['PlayerMatchPokemon']] = so.relationship(secondary='pmp_move', back_populates='moves')
 
     def __repr__(self):
         return f"<Move id:{self.id}, name:{self.name}>"

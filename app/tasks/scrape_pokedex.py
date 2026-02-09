@@ -108,6 +108,23 @@ def scrape_showdown_pokedex():
 
         db.session.commit()
 
+'''@pokedex.command('scrape-images')
+def scrape_images():
+    os.makedirs('app/static/pokemon', exist_ok=True)
+
+    pokemon -
+
+    for i in range(1, 1026):  # All Pokemon as of Gen 9
+        url = f"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/{i}.png"
+        try:
+            response = requests.get(url, timeout=10)
+            if response.status_code == 200:
+                with open(f'app/static/pokemon/{i}.png', 'wb') as f:
+                    f.write(response.content)
+                print(f"Downloaded Pokemon #{i}")
+        except Exception as e:
+            print(f"Failed to download #{i}: {e}")'''
+
 
 
 

@@ -30,9 +30,12 @@ def scrape_new():
         exit(1)
     else:
         matches_json = response.json()
+
+    '''
     # loading from local data for testing purposes
-    '''with open(os.path.join(os.getcwd(), 'app', 'tasks', 'test_data', 'single_record.json'), 'r', encoding='utf-8') as f:
-        matches_json = json.load(f)'''
+    with open(os.path.join(os.getcwd(), 'app', 'tasks', 'test_data', 'single_record.json'), 'r', encoding='utf-8') as f:
+        matches_json = json.load(f)
+    '''
 
     for match_json in matches_json:
         # parse out numeric id for match

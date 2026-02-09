@@ -3,7 +3,7 @@ import sqlalchemy as sa
 import sqlalchemy.orm as so
 from typing import Optional, List
 from app import db
-from app.models.pokemon_info import Pokemon, Ability, Item
+from app.models.pokemon_info import Pokemon, Ability, Item, PokemonType
 
 
 # defines the many-to-many relationship between the Players and Matches tables.
@@ -56,12 +56,15 @@ class PlayerMatchPokemon(db.Model):
     pokemon: so.Mapped[Pokemon] = so.relationship(Pokemon, back_populates='player_matches')
 
     ability_id: so.Mapped[Optional[int]] = so.mapped_column(sa.Integer, sa.ForeignKey('abilities.id'))
-    ability: so.Mapped[Optional[Ability]] = so.relationship(Ability, back_populates='pmp_records')
+    ability: so.Mapped[Optional[Ability]] = so.relationship(Ability)
 
     item_id: so.Mapped[Optional[int]] = so.mapped_column(sa.Integer, sa.ForeignKey('items.id'))
-    item: so.Mapped[Optional[Item]] = so.relationship(Item, back_populates='pmp_records')
+    item: so.Mapped[Optional[Item]] = so.relationship(Item)
 
-    moves: so.Mapped[List['Move']] = so.relationship(secondary='pmp_move', back_populates='pmp_records')
+    terra_type_id: so.Mapped[Optional['int']] = so.mapped_column(sa.Integer, sa.ForeignKey('pokemon_types.id'))
+    terra_type: so.Mapped[Optional[PokemonType]] = so.relationship(PokemonType)
+
+    moves: so.Mapped[List['Move']] = so.relationship(secondary='pmp_move')
 
     def __repr__(self):
         return (f"<PlayerMatchPokemon id {self.id}, match:{self.player_match.match.get_showdown_url_string()} (id {self.player_match.match_id}), "
@@ -69,7 +72,13 @@ class PlayerMatchPokemon(db.Model):
 
     def to_dict(self):
         return {
-
+            'id': self.id,
+            'player_match_id': self.player_match.match_id,
+            'pokemon_id': self.pokemon_id,
+            'ability_id': self.ability_id,
+            'item_id': self.item_id,
+            'terra_type_id': self.terra_type_id,
+            'move_ids': [x.id for x in self.moves],
         }
 
     @classmethod
@@ -84,7 +93,7 @@ class PlayerMatchPokemon(db.Model):
             logging.info(f"Returning existing record {record}")
         return record
 
-# defines relationship between PlayerMatchPokemonTable below and the Moves table.
+# defines relationship between PlayerMatchPokemonTable and the Move table.
 pmp_move = sa.Table(
     'pmp_move',
     db.metadata,
