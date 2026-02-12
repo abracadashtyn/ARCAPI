@@ -27,7 +27,7 @@ base_match_model = api.model('BaseMatch', {
 })
 pokemon_team_overview_model = api.inherit('BasePokemon', pokemon_base_species_model, {
     'item': fields.Nested(item_model),
-    'terra_type': fields.Nested(pokemon_type_model)
+    'tera_type': fields.Nested(pokemon_type_model)
 })
 player_match_model = api.inherit("PlayerMatchDetails", player_model, {
     'winner': fields.Boolean,
@@ -86,7 +86,7 @@ class MatchList(Resource):
                         'image_url': x.pokemon.get_image_url(),
                         'pokedex_number': x.pokemon.pokedex_number,
                         'name': x.pokemon.name,
-                        'terra_type': x.terra_type.to_dict() if x.terra_type else None,
+                        'tera_type': x.tera_type.to_dict(is_tera=True) if x.tera_type else None,
                         'item': x.item.to_dict() if x.item else None,
                     } for x in player_match_record.pokemon]
                 })
@@ -100,7 +100,7 @@ class MatchList(Resource):
 pokemon_instance_model = api.inherit("PokemonInstance", pokemon_model, {
     'ability': fields.Nested(ability_model),
     'item': fields.Nested(item_model),
-    'terra_type': fields.Nested(pokemon_type_model),
+    'tera_type': fields.Nested(pokemon_type_model),
     'moves': fields.List(fields.Nested(move_model))
 })
 player_match_detail_model = api.inherit("PlayerMatchDetails", player_model, {
@@ -147,7 +147,7 @@ class MatchDetails(Resource):
                     'name': x.pokemon.name,
                     'tier': x.pokemon.tier,
                     'types': [y.to_dict() for y in x.pokemon.types],
-                    'terra_type': x.terra_type.to_dict() if x.terra_type else None,
+                    'tera_type': x.tera_type.to_dict(is_tera=True) if x.tera_type else None,
                     'base_species': x.pokemon.base_species.to_dict() if x.pokemon.base_species else None,
                     'ability': x.ability.to_dict(),
                     'item': x.item.to_dict() if x.item else None,

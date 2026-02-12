@@ -44,34 +44,38 @@ class PokemonTypeList(Resource):
             api.abort(500, f'Error querying database for pokemon types: {e}')
 
 
-"""fetch details on one specific pokemon type"""
-pokemon_type_detail_model = api.inherit('PokemonTypeDetail', pokemon_type_model, {
-    'pokemon_ids': fields.List(fields.Integer, description='List of Pokemon IDs with this type')
-})
-pokemon_type_detail_response = api.model('PokemonTypeDetailResponse', {
-    'success': fields.Boolean,
-    'data': fields.Nested(pokemon_type_detail_model)
-})
-@poke_type_ns.route('/<int:type_id>')
-class PokemonTypeDetail(Resource):
-    @poke_type_ns.doc('get_pokemon_type', description='Get details of one specific pokemon type, and a list of pokemon that are of that type.')
-    @poke_type_ns.response(404, 'Pokemon type not found', error_response)
+"""Fetch a list of all pokemon types"""
+@poke_type_ns.route('/tera')
+class PokemonTeraTypeList(Resource):
+    @poke_type_ns.doc('list_pokemon_tera_types')
+    @poke_type_ns.param('page', 'Page number', type='integer', default=1)
+    @poke_type_ns.param('limit', 'Items per page', type='integer', default=50)
+    @poke_type_ns.param(name='name', description='Tera type name (full or partial) to filter results by', type='string')
     @poke_type_ns.response(500, 'Internal server error', error_response)
-    @poke_type_ns.marshal_with(pokemon_type_detail_response, code=200)
-    def get(self, type_id):
+    @poke_type_ns.marshal_with(pokemon_type_list_response, code=200)
+    def get(self):
+        page = request.args.get('page', 1, type=int)
+        limit = request.args.get('limit', 50, type=int)
+        query = PokemonType.query.order_by(PokemonType.name)
+        if 'name' in request.args:
+            search_string = request.args['name']
+            if '%' not in search_string:
+                search_string = f"%{search_string}%"
+            query = query.filter(PokemonType.name.like(search_string))
         try:
-            type_record = PokemonType.query.filter_by(id=type_id).first()
+            paginated_results = query.paginate(page=page, per_page=limit, error_out=False)
+            data = {
+                'success': True,
+                'data': [x.to_dict(is_tera=True) for x in paginated_results.items],
+                'pagination': {
+                    'page': page,
+                    'items_per_page': limit,
+                    'total_pages': paginated_results.pages,
+                    'total_items': paginated_results.total
+                }
+            }
+            return data
         except SQLAlchemyError as e:
-            # Handle database errors specifically
-            print(f"Error querying database for pokemon type with ID {type_id}: {e}")
-            api.abort(500, f'Error querying database for pokemon type with ID {type_id}: {e}')
+            api.abort(500, f'Error querying database for pokemon types: {e}')
 
-        if not type_record:
-            api.abort(404, f'Pokemon type with ID {type_id} not found')
 
-        response = {
-            'success': True,
-            'data': type_record.to_dict()
-        }
-        response['data']['pokemon_ids'] = [x.id for x in type_record.pokemon]
-        return response

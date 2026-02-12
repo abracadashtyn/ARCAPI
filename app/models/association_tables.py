@@ -61,8 +61,8 @@ class PlayerMatchPokemon(db.Model):
     item_id: so.Mapped[Optional[int]] = so.mapped_column(sa.Integer, sa.ForeignKey('items.id'))
     item: so.Mapped[Optional[Item]] = so.relationship(Item)
 
-    terra_type_id: so.Mapped[Optional['int']] = so.mapped_column(sa.Integer, sa.ForeignKey('pokemon_types.id'))
-    terra_type: so.Mapped[Optional[PokemonType]] = so.relationship(PokemonType)
+    tera_type_id: so.Mapped[Optional['int']] = so.mapped_column(sa.Integer, sa.ForeignKey('pokemon_types.id'))
+    tera_type: so.Mapped[Optional[PokemonType]] = so.relationship(PokemonType)
 
     moves: so.Mapped[List['Move']] = so.relationship(secondary='pmp_move')
 
@@ -77,7 +77,7 @@ class PlayerMatchPokemon(db.Model):
             'pokemon_id': self.pokemon_id,
             'ability_id': self.ability_id,
             'item_id': self.item_id,
-            'terra_type_id': self.terra_type_id,
+            'tera_type_id': self.tera_type_id,
             'move_ids': [x.id for x in self.moves],
         }
 

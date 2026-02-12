@@ -253,7 +253,7 @@ def scrape_pokemon_images():
 @pokemon.command('scrape-type-images')
 def scrape_type_images():
     type_image_base_url = 'https://www.serebii.net/pokedex-sv/type/icon/'
-    types = PokemonType.query.all()  # bird type is weird, just skip it
+    types = PokemonType.query.all()
     for type in types:
         serebii_formatted_name = ''.join([x.lower() for x in type.name if x.isalnum()])
         type_image_file = os.path.join(current_app.config['TYPE_IMAGES_DIR'], format_name_to_image_file(type.name))
@@ -291,6 +291,24 @@ def scrape_item_images():
                 f.write(item_image_response.content)
 
 
+@pokemon.command('scrape-tera-types')
+def scrape_tera_types():
+    tera_type_url = 'https://play.pokemonshowdown.com/sprites/types/'
+    types = PokemonType.query.all()
+    for type in types:
+        type_image_file = os.path.join(current_app.config['TERA_TYPE_IMAGES_DIR'], format_name_to_image_file(type.name))
+        if not os.path.exists(type_image_file):
+            type_image_url = f'{tera_type_url}Tera{type.name}.png'
+            print(
+                f"Waiting {current_app.config['REQUEST_DELAY']} seconds then fetching type image from {type_image_url}")
+            time.sleep(current_app.config['REQUEST_DELAY'])
+            type_image_response = requests.get(type_image_url, timeout=10)
+            if type_image_response.status_code != 200:
+                click.echo(f"ERROR: could not fetch tera type image. CODE {type_image_response.status_code}: "
+                           f"{type_image_response.reason}")
+                continue
+            with open(type_image_file, 'wb') as f:
+                f.write(type_image_response.content)
 
 
 

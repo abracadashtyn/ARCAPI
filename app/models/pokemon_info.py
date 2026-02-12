@@ -23,14 +23,32 @@ class PokemonType(db.Model):
     def __repr__(self):
         return f"<{self.name} type, id:{self.id}>"
 
-    def to_dict(self):
+    def to_dict(self, is_tera=False):
+        if is_tera:
+            print(f"this is a tera type request! Returning image URL {self.get_tera_image_url()}")
+            return {
+                'id': self.id,
+                'name': self.name,
+                'image_url': self.get_tera_image_url()
+            }
+
+
+        print(f"This is a normal type request! Returning image URL {self.get_image_url()}")
         return {
             'id': self.id,
             'name': self.name,
-            'image_url': url_for(endpoint='static',
-                                 filename=f'/images/types/{format_name_to_image_file(self.name)}',
-                                 _external=True)
+            'image_url': self.get_image_url()
         }
+
+    def get_image_url(self):
+        return url_for(endpoint='static',
+                filename=f'images/types/{format_name_to_image_file(self.name)}',
+                _external=True)
+
+    def get_tera_image_url(self):
+        return url_for(endpoint='static',
+                filename=f'images/tera/{format_name_to_image_file(self.name)}',
+                _external=True)
 
     @classmethod
     def get_or_create(cls, name: str):
@@ -84,7 +102,7 @@ class Pokemon(db.Model):
     def get_image_url(self):
         # TODO add logic to return image for parent if child image does not exist
         return url_for(endpoint='static',
-                filename=f'/images/pokemon/{format_name_to_image_file(self.name)}',
+                filename=f'images/pokemon/{format_name_to_image_file(self.name)}',
                 _external=True)
 
 
@@ -115,7 +133,7 @@ class Item(db.Model):
             'id': self.id,
             'name': self.name,
             'image_url': url_for(endpoint='static',
-                     filename=f'/images/items/{format_name_to_image_file(self.name)}',
+                     filename=f'images/items/{format_name_to_image_file(self.name)}',
                      _external=True)
         }
 

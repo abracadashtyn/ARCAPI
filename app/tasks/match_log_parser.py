@@ -89,7 +89,7 @@ class MatchLogParser:
 
             for i in range(2, 8):
                 '''
-                will always be of format <pokemon_name>||<item>|<ability>|<moveset>|||<gender>|||<level>|,,,,,<terra_type>]
+                will always be of format <pokemon_name>||<item>|<ability>|<moveset>|||<gender>|||<level>|,,,,,<tera_type>]
                 when split on |, 
                     [0]='<pokemon_name>'
                     [1]=''
@@ -102,7 +102,7 @@ class MatchLogParser:
                     [8]=''
                     [9]=''
                     [10]='<level>'
-                    [11]=',,,,,<terra_type>]'
+                    [11]=',,,,,<tera_type>]'
                     
                 I'm unsure if the blank fields will ever be populated, or if that's simply formatting.
                 TODO no documentation on this - dig through the code to find out? 
@@ -151,17 +151,17 @@ class MatchLogParser:
                     if move_record not in pmp_record.moves:
                         pmp_record.moves.append(move_record)
 
-                # [11]=',,,,,<terra_type>]'
+                # [11]=',,,,,<tera_type>]'
                 if pkmn_info[11] != "":
-                    terra_type_name = pkmn_info[11].lstrip(',').rstrip(']')
-                    terra_type_record = PokemonType.query.filter(PokemonType.name == terra_type_name).first()
+                    tera_type_name = pkmn_info[11].lstrip(',').rstrip(']')
+                    tera_type_record = PokemonType.query.filter(PokemonType.name == tera_type_name).first()
 
-                    # all pokemon types are already in table and rarely change. If a terra type is found that does not
+                    # all pokemon types are already in table and rarely change. If a tera type is found that does not
                     # already exist in the db, it's more likely the formatting of the log has changed than that this is
                     # actually a new pokemon type. Raise an exception in this case/
-                    if terra_type_record is None:
-                        raise Exception(f"Could not find terra type '{terra_type_name}'")
+                    if tera_type_record is None:
+                        raise Exception(f"Could not find tera type '{tera_type_name}'")
 
-                    pmp_record.terra_type = terra_type_record
+                    pmp_record.tera_type = tera_type_record
 
                 db.session.commit()

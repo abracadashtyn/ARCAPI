@@ -43,5 +43,6 @@ def create_app(config_class=None):
     os.makedirs(app.config['POKEMON_IMAGES_DIR'], exist_ok=True)
     os.makedirs(app.config['ITEM_IMAGES_DIR'], exist_ok=True)
     os.makedirs(app.config['TYPE_IMAGES_DIR'], exist_ok=True)
+    os.makedirs(app.config['TERA_TYPE_IMAGES_DIR'], exist_ok=True)
 
     return app
