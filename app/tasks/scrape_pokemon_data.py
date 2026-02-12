@@ -6,13 +6,14 @@ import time
 
 import click
 import requests
+import unicodedata
 from bs4 import BeautifulSoup
 from flask import current_app
 
 from app import db
 from app.tasks import bp
 from app.models import Pokemon, PokemonType, Ability, Item
-from app.utils import format_name_to_image_file
+from app.utils import format_name_to_image_file, remove_accent_marks
 
 
 @bp.cli.group()
@@ -126,6 +127,13 @@ def scrape_serebii(local_mode, save_data):
             pkmn_id = tds[0].get_text(strip=True)
             pkmn_id = int(pkmn_id.lstrip("#"))
             pkmn_name = tds[2].get_text(strip=True)
+
+            # skip if this name has any special characters in it i.e. Nidoran male or female, which showdown has in
+            # a better format
+            if any([True if unicodedata.category(x).startswith('S') else False for x in pkmn_name]):
+                click.echo(f"Skipping {pkmn_name}")
+                continue
+
             pkmn_record = Pokemon.get_or_create(pkmn_name, pkmn_id)
             for type in tds[3].find_all('a'):
                 type_name = type.get('href').split('/')[-1]
@@ -236,7 +244,7 @@ def scrape_pokemon_images():
         # check if the image already exists, and fetch if not
         pokemon_image_file = os.path.join(current_app.config['POKEMON_IMAGES_DIR'], format_name_to_image_file(pokemon.name))
         if not os.path.exists(pokemon_image_file):
-            pokemon_image_url = f'{pokemon_image_base_url}{showdown_formatted_name}.png'
+            pokemon_image_url = f'{pokemon_image_base_url}{remove_accent_marks(showdown_formatted_name)}.png'
             click.echo(f"Waiting {current_app.config['REQUEST_DELAY']} seconds then fetching pokemon image from {pokemon_image_url}")
             time.sleep(current_app.config['REQUEST_DELAY'])
             pokemon_image_response = requests.get(pokemon_image_url, timeout=10)
