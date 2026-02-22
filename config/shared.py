@@ -9,3 +9,4 @@ class Config(object):
 
     # default delay to wait between requests when scraping data so as to not hammer APIs or get rate-limited
     REQUEST_DELAY = 3
+    CURRENT_FORMAT_ID = 1 # TODO set this as as database param or something?

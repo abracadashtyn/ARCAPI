@@ -1,7 +1,10 @@
-from flask import request
+import json
+
+from flask import request, current_app
 from flask_restx import Namespace, fields, Resource
 from sqlalchemy.exc import SQLAlchemyError
 
+from app import db
 from app.api.v0 import api, pagination_model, error_response
 from app.api.v0.abilities_namespace import ability_model
 from app.api.v0.formats_namespace import format_model
@@ -10,11 +13,49 @@ from app.api.v0.moves_namespace import move_model
 from app.api.v0.players_namespace import player_model
 from app.api.v0.pokemon_namespace import pokemon_model, pokemon_base_species_model
 from app.api.v0.types_namespace import pokemon_type_model
-from app.models import Match
+from app.models import Match, PlayerMatchPokemon, PlayerMatch
 
 matches_ns = Namespace('Matches')
 api.add_namespace(matches_ns, path='/matches')
 
+default_match_limit = 50
+
+def query_and_format_matches(query, page, limit):
+    try:
+        paginated_results = query.paginate(page=page, per_page=limit, error_out=False)
+    except SQLAlchemyError as e:
+        api.abort(500, f'Error querying database for matches: {e}')
+
+    response_json = {
+        'success': True,
+        'data': [],
+        'pagination': {
+            'page': page,
+            'items_per_page': limit,
+            'total_pages': paginated_results.pages,
+            'total_items': paginated_results.total
+        }
+    }
+    for match_record in paginated_results:
+        match_dict = match_record.to_dict()
+        match_dict['players'] = []
+        for player_match_record in match_record.players:
+            match_dict['players'].append({
+                'id': player_match_record.player_id,
+                'winner': player_match_record.won_match,
+                'name': player_match_record.player.name,
+                'team': [{
+                    'id': x.pokemon_id,
+                    'image_url': x.pokemon.get_image_url(),
+                    'pokedex_number': x.pokemon.pokedex_number,
+                    'name': x.pokemon.name,
+                    'tera_type': x.tera_type.to_dict(is_tera=True) if x.tera_type else None,
+                    'item': x.item.to_dict() if x.item else None,
+                } for x in player_match_record.pokemon]
+            })
+        response_json['data'].append(match_dict)
+
+    return response_json
 
 """Fetches a list of all matches"""
 base_match_model = api.model('BaseMatch', {
@@ -45,54 +86,22 @@ match_list_response = api.model('MatchListResponse', {
 class MatchList(Resource):
     @matches_ns.doc('list_matches')
     @matches_ns.param('page', 'Page number', type='integer', default=1)
-    @matches_ns.param('limit', 'Items per page', type='integer', default=50)
+    @matches_ns.param('limit', 'Items per page', type='integer', default=default_match_limit)
     @matches_ns.param('format_id', 'Format ID', type='integer')
     @matches_ns.response(500, 'Internal server error', error_response)
     @matches_ns.marshal_with(match_list_response, code=200)
     def get(self):
         page = request.args.get('page', 1, type=int)
-        limit = request.args.get('limit', 50, type=int)
+        limit = request.args.get('limit', default_match_limit, type=int)
 
         query = Match.query.order_by(Match.upload_time.desc())
         if 'format_id' in request.args:
             format = request.args.get('format_id', type=int)
             query = query.filter(Match.format_id == format)
+        else:
+            query = query.filter(Match.format_id == current_app.config['CURRENT_FORMAT_ID'])
 
-        try:
-            paginated_results = query.paginate(page=page, per_page=limit, error_out=False)
-        except SQLAlchemyError as e:
-            api.abort(500, f'Error querying database for matches: {e}')
-
-        response_json = {
-            'success': True,
-            'data': [],
-            'pagination': {
-                'page': page,
-                'items_per_page': limit,
-                'total_pages': paginated_results.pages,
-                'total_items': paginated_results.total
-            }
-        }
-        for match_record in paginated_results:
-            match_dict = match_record.to_dict()
-            match_dict['players'] = []
-            for player_match_record in match_record.players:
-                match_dict['players'].append({
-                    'id': player_match_record.player_id,
-                    'winner': player_match_record.won_match,
-                    'name': player_match_record.player.name,
-                    'team': [{
-                        'id': x.pokemon_id,
-                        'image_url': x.pokemon.get_image_url(),
-                        'pokedex_number': x.pokemon.pokedex_number,
-                        'name': x.pokemon.name,
-                        'tera_type': x.tera_type.to_dict(is_tera=True) if x.tera_type else None,
-                        'item': x.item.to_dict() if x.item else None,
-                    } for x in player_match_record.pokemon]
-                })
-            response_json['data'].append(match_dict)
-
-        return response_json
+        return query_and_format_matches(query, page, limit)
 
 
 
@@ -156,3 +165,50 @@ class MatchDetails(Resource):
             })
         return response
 
+
+search_pokemon_request_model = api.model('SearchPokemonModel', {
+    'id': fields.Integer(required=True),
+    'item_id': fields.Integer,
+    'tera_type_id': fields.Integer,
+})
+search_request_model = api.model('SearchModel', {
+    'limit': fields.Integer(example=default_match_limit),
+    'page': fields.Integer(example=1),
+    'format_id': fields.Integer(example=current_app.config['CURRENT_FORMAT_ID']),
+    'minimum_rating': fields.Integer(example=0),
+    'pokemon': fields.List(fields.Nested(search_pokemon_request_model)),
+})
+@matches_ns.route('/search')
+class Search(Resource):
+    @api.expect(search_request_model, validate=True)
+    @matches_ns.response(500, 'Internal server error', error_response)
+    @matches_ns.marshal_with(match_list_response, code=200)
+    def post(self):
+        search_data = api.payload
+
+        page = search_data['page'] if 'page' in search_data else 1
+        limit = search_data['limit'] if 'limit' in search_data else default_match_limit
+
+        query = Match.query.order_by(Match.upload_time.desc())
+        if 'format_id' in search_data and search_data['format_id'] != "":
+            query = query.filter(Match.format_id == search_data['format_id'])
+        else:
+            # TODO - better to return all formats or just currently played format?
+            query = query.filter(Match.format_id == current_app.config['CURRENT_FORMAT_ID'])
+
+        if 'minimum_rating' in search_data and search_data['minimum_rating'] != "":
+            query = query.filter(Match.rating >= search_data['minimum_rating'])
+
+        if len(search_data['pokemon']) > 0:
+            pokemon_query_chunks = []
+            for pokemon_filter in search_data['pokemon']:
+                filter_conditions = [PlayerMatchPokemon.pokemon_id == pokemon_filter['id']]
+                if 'item_id' in pokemon_filter:
+                    filter_conditions.append(PlayerMatchPokemon.item_id == pokemon_filter['item_id'])
+                if 'tera_type_id' in pokemon_filter:
+                    filter_conditions.append(PlayerMatchPokemon.tera_type_id == pokemon_filter['tera_type_id'])
+                pokemon_query_chunks.append(PlayerMatch.pokemon.any(db.and_(*filter_conditions)))
+            query = query.filter(Match.players.any(db.and_(*pokemon_query_chunks)))
+
+        print(f"will execute query {str(query.statement.compile(compile_kwargs={"literal_binds": True}))}")
+        return query_and_format_matches(query, page, limit)
