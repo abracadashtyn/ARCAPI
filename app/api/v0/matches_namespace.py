@@ -13,7 +13,7 @@ from app.api.v0.moves_namespace import move_model
 from app.api.v0.players_namespace import player_model
 from app.api.v0.pokemon_namespace import pokemon_model, pokemon_base_species_model
 from app.api.v0.types_namespace import pokemon_type_model
-from app.models import Match, PlayerMatchPokemon, PlayerMatch
+from app.models import Match, PlayerMatchPokemon, PlayerMatch, Player
 
 matches_ns = Namespace('Matches')
 api.add_namespace(matches_ns, path='/matches')
@@ -21,7 +21,7 @@ api.add_namespace(matches_ns, path='/matches')
 default_match_limit = 50
 
 def query_and_format_matches(query, page, limit):
-    print(str(query.statement.compile(compile_kwargs={"literal_binds": True})))
+    #print(str(query.statement.compile(compile_kwargs={"literal_binds": True})))
     try:
         paginated_results = query.paginate(page=page, per_page=limit, error_out=False)
     except SQLAlchemyError as e:
@@ -205,7 +205,9 @@ search_request_model = api.model('SearchModel', {
     'time_range': fields.Nested(api.model('TimeRangeModel', {
         'start': fields.Integer(description='Inclusive, in Unix epoch timestamp format'),
         'end': fields.Integer(description='Inclusive, in Unix epoch timestamp format'),
-    }))
+    })),
+    'player_id': fields.Integer,
+    'player_name': fields.String(description="will be superceded by user_id field if both are provided."),
 })
 @matches_ns.route('/search')
 class Search(Resource):
@@ -266,5 +268,9 @@ class Search(Resource):
             if 'max' in search_data['rating'] and search_data.get('rating', 'max') != None:
                 query = query.filter(Match.rating <= search_data['rating']['max'])
 
+        if 'player_id' in search_data:
+            query = query.filter(Match.players.any(PlayerMatch.id == search_data['player_id']))
+        elif 'player_name' in search_data:
+            query = query.filter(Match.players.any(PlayerMatch.player.has(Player.name == search_data['player_name'])))
 
         return query_and_format_matches(query, page, limit)
