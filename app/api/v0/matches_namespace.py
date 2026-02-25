@@ -21,6 +21,7 @@ api.add_namespace(matches_ns, path='/matches')
 default_match_limit = 50
 
 def query_and_format_matches(query, page, limit):
+    print(str(query.statement.compile(compile_kwargs={"literal_binds": True})))
     try:
         paginated_results = query.paginate(page=page, per_page=limit, error_out=False)
     except SQLAlchemyError as e:
@@ -188,7 +189,11 @@ search_request_model = api.model('SearchModel', {
     'limit': fields.Integer(example=default_match_limit),
     'page': fields.Integer(example=1),
     'format_id': fields.Integer(example=1),
-    'minimum_rating': fields.Integer(example=0),
+    'rating':fields.Nested(api.model('RatingModel', {
+        'min': fields.Integer(example=1000),
+        'max': fields.Integer(example=1500),
+        'unrated_only': fields.Boolean(example=False),
+    })),
     'pokemon': fields.List(fields.Nested(search_pokemon_request_model)),
     'order_by': fields.String(
         required=False,
@@ -196,7 +201,11 @@ search_request_model = api.model('SearchModel', {
         default='time',
         example='time',
         description='Sort results by time (most recent to oldest) or rating (highest first)'
-    )
+    ),
+    'time_range': fields.Nested(api.model('TimeRangeModel', {
+        'start': fields.Integer(description='Inclusive, in Unix epoch timestamp format'),
+        'end': fields.Integer(description='Inclusive, in Unix epoch timestamp format'),
+    }))
 })
 @matches_ns.route('/search')
 class Search(Resource):
@@ -220,7 +229,7 @@ class Search(Resource):
         if 'minimum_rating' in search_data and search_data['minimum_rating'] != "":
             query = query.filter(Match.rating >= search_data['minimum_rating'])
 
-        if len(search_data['pokemon']) > 0:
+        if 'pokemon' in search_data and len(search_data['pokemon']) > 0:
             pokemon_query_chunks = []
             for pokemon_filter in search_data['pokemon']:
                 filter_conditions = [PlayerMatchPokemon.pokemon_id == pokemon_filter['id']]
@@ -235,5 +244,27 @@ class Search(Resource):
             query = query.order_by(Match.rating.desc())
         else:
             query = query.order_by(Match.upload_time.desc())
+
+        if 'time_range' in search_data:
+            if 'start' in search_data['time_range']:
+                query = query.filter(Match.upload_time >= search_data['time_range']['start'])
+            if 'end' in search_data['time_range']:
+                query = query.filter(Match.upload_time <= search_data['time_range']['end'])
+
+
+        if 'rating' in search_data:
+            if 'unrated_only' in search_data['rating'] and search_data['rating']['unrated_only'] is True:
+                if 'min' in search_data['rating'] or 'max' in search_data['rating']:
+                    api.abort(400, "'rating' parameters are invalid - cannot provide rating range while 'unrated_only' "
+                                   "parameter is set to 'true'.")
+
+                query = query.filter(Match.rating.is_(None))
+
+            if 'min' in search_data['rating'] and search_data.get('rating', 'min') != None:
+                query = query.filter(Match.rating >= search_data['rating']['min'])
+
+            if 'max' in search_data['rating'] and search_data.get('rating', 'max') != None:
+                query = query.filter(Match.rating <= search_data['rating']['max'])
+
 
         return query_and_format_matches(query, page, limit)
