@@ -104,6 +104,12 @@ class Pokemon(db.Model):
                 filename=f'images/pokemon/{format_name_to_image_file(self.name)}',
                 _external=True)
 
+    @staticmethod
+    def get_image_url_from_name(name):
+        # TODO figure out how to handle returning parent image if child does not exist - db field?
+        return url_for(endpoint='static',
+                       filename=f'images/pokemon/{format_name_to_image_file(name)}',
+                       _external=True)
 
     @classmethod
     def get_or_create(cls,name: str, pokedex_number:int=None):

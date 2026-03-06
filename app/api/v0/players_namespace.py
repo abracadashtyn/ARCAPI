@@ -1,10 +1,12 @@
 from flask import request
 from flask_restx import Namespace, fields, Resource
+from sqlalchemy import func, case
 from sqlalchemy.exc import SQLAlchemyError
 
+from app import db
 from app.api.PaginationUtils import PaginationUtils
 from app.api.v0 import api, pagination_model, error_response
-from app.models import Player
+from app.models import Player, PlayerMatchPokemon, PlayerMatch, Match, Pokemon
 
 players_ns = Namespace('Players', description='Endpoints related to pokemon showdown player accounts')
 api.add_namespace(players_ns, path='/players')
@@ -20,7 +22,7 @@ player_list_response = api.model('PlayerListResponse', {
     'pagination': fields.Nested(pagination_model)
 })
 @players_ns.route('/')
-class PlayerList(Resource):
+class PlayerListRoute(Resource):
     @players_ns.doc('list_players')
     @players_ns.param('page', 'Page number', type='integer', default=1)
     @players_ns.param('limit', 'Items per page', type='integer', default=50)
@@ -39,4 +41,94 @@ class PlayerList(Resource):
         try:
             return PaginationUtils.paginate_query(query, page, limit)
         except SQLAlchemyError as e:
-            api.abort(500, f'Error querying database for formats: {e}')
+            api.abort(500, f'Error querying database for formats: {e}')\
+
+
+player_match_detail = api.model('PlayerMatchDetail', {
+    'id': fields.Integer,
+    'rating': fields.Integer,
+})
+pokemon_usage_detail = api.model('PokemonUsageDetail', {
+    'id': fields.Integer,
+    'name': fields.String,
+    'usage_count': fields.Integer,
+    'image_url': fields.String,
+})
+player_detail = api.inherit('PlayerDetail', player_model, {
+    'match_count': fields.Integer,
+    'win_count': fields.Integer,
+    'top_rated_match': fields.Nested(player_match_detail),
+    'most_recent_rated_match': fields.Nested(player_match_detail),
+    'most_used_pokemon': fields.List(fields.Nested(pokemon_usage_detail))
+})
+player_response = api.model('PlayerResponse', {
+    'success': fields.Boolean,
+    'data': fields.Nested(player_detail),
+})
+@players_ns.route('/<int:player_id>')
+class PlayerRoute(Resource):
+    @players_ns.doc('get_player')
+    @players_ns.response(404, 'Player not found')
+    @players_ns.marshal_with(player_response)
+    def get(self, player_id):
+        print(f"Getting player {player_id}")
+        player_record = Player.query.get_or_404(player_id)
+        counts = db.session\
+            .query(
+                func.count(PlayerMatch.id).label('total_matches'),
+                func.sum(case((PlayerMatch.won_match == True, 1), else_=0)).label('wins'))\
+            .filter(PlayerMatch.player_id == player_id)\
+            .first()
+        response_data = {
+            'id': player_record.id,
+            'name': player_record.name,
+            'match_count': counts[0],
+            'win_count': counts[1],
+        }
+
+        base_match_query = db.session\
+            .query(Match.id, Match.rating)\
+            .join(PlayerMatch)\
+            .filter(PlayerMatch.player_id == player_id)\
+            .filter(Match.rating != None)
+
+        top_rating = base_match_query.order_by(Match.rating.desc()).first()
+        most_recent_rating = base_match_query.order_by(Match.upload_time.desc()).first()
+        if top_rating is not None:
+            response_data['top_rated_match']= {
+                'id': top_rating[0],
+                'rating': top_rating[1]
+            }
+        if most_recent_rating is not None:
+            response_data['most_recent_rated_match']= {
+                'id': most_recent_rating[0],
+                'rating': most_recent_rating[1]
+            }
+
+        pokemon_records = db.session\
+            .query(
+                Pokemon.id,
+                Pokemon.name,
+                func.count(PlayerMatchPokemon.pokemon_id).label('usage_count'))\
+            .join(PlayerMatchPokemon, PlayerMatchPokemon.pokemon_id == Pokemon.id)\
+            .join(PlayerMatch)\
+            .filter(PlayerMatch.player_id == player_record.id)\
+            .group_by(Pokemon.id, Pokemon.name)\
+            .order_by(func.count(PlayerMatchPokemon.pokemon_id).desc())\
+            .limit(6).all()
+
+        response_data['most_used_pokemon'] = []
+        for pokemon_record in pokemon_records:
+            response_data['most_used_pokemon'].append({
+                'id': pokemon_record[0],
+                'name': pokemon_record[1],
+                'usage_count': pokemon_record[2],
+                'image_url': Pokemon.get_image_url_from_name(pokemon_record[1]),
+            })
+
+        response = {
+            'success': True,
+            'data': response_data
+        }
+
+        return response

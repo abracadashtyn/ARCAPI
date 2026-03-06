@@ -131,7 +131,7 @@ player_match_detail_model = api.inherit("PlayerMatchDetails", player_model, {
     'team': fields.List(fields.Nested(pokemon_instance_model)),
 })
 match_detail_model = api.inherit('MatchDetails', base_match_model, {
-        'players': fields.List(fields.Nested(player_match_detail_model))
+    'players': fields.List(fields.Nested(player_match_detail_model))
 })
 match_detail_response = api.model('MatchDetailResponse', {
     'success': fields.Boolean,
