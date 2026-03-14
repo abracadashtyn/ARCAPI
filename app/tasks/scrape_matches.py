@@ -20,7 +20,10 @@ def showdown():
 
 @showdown.command('scrape-new')
 @click.option('--format_id', '-f', type=int)
-def scrape_new(format_id):
+@click.option('--wait', '-w', is_flag=True, default=False,
+              help='whether to wait REQUEST_DELAY seconds before calling showdown API (to not hammer it or get rate limited)')
+def scrape_new(format_id, wait):
+    logging.basicConfig(level=logging.INFO)
     error_file_name = os.path.join(os.getcwd(), 'app', 'tasks', 'errors', f'scrape-new-{int(time.time())}.json')
 
     # get the format id - default to current as specified in config if no value is provided
@@ -50,9 +53,13 @@ def scrape_new(format_id):
     while len(matches_json) > 0:
         for match_json in matches_json:
             if match_json["uploadtime"] >= last_match_timestamp:
+                logging.info(f"Processing match {match_json['id']}")
+                if wait:
+                    logging.info(f"Waiting {current_app.config['REQUEST_DELAY']} seconds to call showdown api")
+                    time.sleep(current_app.config['REQUEST_DELAY'])
                 try:
-                    match_parser = ShowdownMatchParser.init_from_search_json(match_json, format, throw_if_exists=True)
-                    match_parser.parse_detail_log()
+                    match_parser = ShowdownMatchParser(match_json, format, throw_if_exists=True)
+                    match_parser.parse_log_details()
                     matches_added_count += 1
                 except AlreadyExistsException:
                     # a record for the match already exists; continue to the next one
@@ -70,7 +77,7 @@ def scrape_new(format_id):
                     continue
 
             else:
-                print(f"Match with timestamp {match_json['uploadtime']} is older than {last_match_timestamp}."
+                logging.info(f"Match with timestamp {match_json['uploadtime']} is older than {last_match_timestamp}."
                       f"Match scraping is complete. Added {matches_added_count} matches to database.")
                 return
 
@@ -93,7 +100,10 @@ def scrape_new(format_id):
 
 @showdown.command('scrape-historic')
 @click.option('--format_id', '-f', type=int)
-def scrape_historic(format_id):
+@click.option('--wait', '-w', is_flag=True, default=True,
+              help='whether to wait REQUEST_DELAY seconds before calling showdown API (to not hammer it or get rate limited)')
+def scrape_historic(format_id, wait):
+    logging.basicConfig(level=logging.INFO)
     error_file_name = os.path.join(os.getcwd(), 'app', 'tasks', 'errors', f'scrape-historic-{int(time.time())}.json')
 
     # get the format id - default to current as specified in config if no value is provided
@@ -124,9 +134,14 @@ def scrape_historic(format_id):
     matches_added_count = 0
     while len(matches_json) > 0:
         for match_json in matches_json:
+            logging.info(f"Processing match {match_json['id']}")
+            if wait:
+                logging.info(f"Waiting {current_app.config['REQUEST_DELAY']} seconds to call showdown api")
+                time.sleep(current_app.config['REQUEST_DELAY'])
+
             try:
-                match_parser = ShowdownMatchParser.init_from_search_json(match_json, format, throw_if_exists=True)
-                match_parser.parse_detail_log()
+                match_parser = ShowdownMatchParser(match_json, format, throw_if_exists=True)
+                match_parser.parse_log_details()
                 matches_added_count += 1
             except AlreadyExistsException:
                 # a record for the match already exists; continue to the next one
@@ -162,7 +177,10 @@ def scrape_historic(format_id):
 
 @showdown.command('scrape-all')
 @click.option('--format_id', '-f', type=int)
-def scrape_all(format_id):
+@click.option('--wait', '-w', is_flag=True, default=False,
+              help='whether to wait REQUEST_DELAY seconds before calling showdown API (to not hammer it or get rate limited)')
+def scrape_all(format_id, wait):
+    logging.basicConfig(level=logging.INFO)
     error_file_name = os.path.join(os.getcwd(), 'app', 'tasks', 'errors', f'scrape-all-{int(time.time())}.json')
 
     # get the format id - default to current as specified in config if no value is provided
@@ -183,9 +201,13 @@ def scrape_all(format_id):
     matches_added_count = 0
     while len(matches_json) > 0:
         for match_json in matches_json:
+            logging.info(f"Processing match {match_json['id']}")
+            if wait:
+                logging.info(f"Waiting {current_app.config['REQUEST_DELAY']} seconds to call showdown api")
+                time.sleep(current_app.config['REQUEST_DELAY'])
             try:
-                match_parser = ShowdownMatchParser.init_from_search_json(match_json, format, throw_if_exists=True)
-                match_parser.parse_detail_log()
+                match_parser = ShowdownMatchParser(match_json, format, throw_if_exists=True)
+                match_parser.parse_log_details()
                 matches_added_count += 1
             except AlreadyExistsException:
                 # a record for the match already exists; continue to the next one

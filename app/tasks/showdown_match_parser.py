@@ -83,7 +83,6 @@ class ShowdownMatchParser:
 
         for player_info in players:
             player_info_chunks = self.clean_and_split_line(player_info)
-            print(player_info_chunks)
             if player_info_chunks[1].lower() == "p1":
                 player1_record = Player.get_or_create(player_info_chunks[2])
             elif player_info_chunks[1].lower() == "p2":
@@ -107,7 +106,6 @@ class ShowdownMatchParser:
             raise Exception(f"Could not find any lines with info on winner; please check data and try again. ")
 
         winner = self.clean_and_split_line(winner_lines[0])[1]
-        print(f"winner: {winner}")
 
         if winner.lower() == player1_record.name.lower():
             self.player_1_match_record.won_match = True
