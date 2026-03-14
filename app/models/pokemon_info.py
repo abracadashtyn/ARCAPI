@@ -56,9 +56,6 @@ class PokemonType(db.Model):
             record = cls(name=name)
             db.session.add(record)
             db.session.commit()
-            logging.info(f"Returning newly created record {record}")
-        else:
-            logging.info(f"Returning existing record {record}")
         return record
 
 
@@ -119,9 +116,6 @@ class Pokemon(db.Model):
             record = cls(name=name, pokedex_number=pokedex_number)
             db.session.add(record)
             db.session.commit()
-            logging.info(f"Returning newly created record {record}")
-        else:
-            logging.info(f"Returning existing record {record}")
         return record
 
 
@@ -154,9 +148,6 @@ class Item(db.Model):
             # if item is new, attempt to fetch image as well
             from app.tasks.scrape_pokemon_data import scrape_item_image
             scrape_item_image(record.name)
-            logging.info(f"Returning newly created record {record}")
-        else:
-            logging.info(f"Returning existing record {record}")
         return record
 
 
@@ -182,9 +173,6 @@ class Ability(db.Model):
             record = cls(name=name)
             db.session.add(record)
             db.session.commit()
-            logging.info(f"Returning newly created record {record}")
-        else:
-            logging.info(f"Returning existing record {record}")
         return record
 
 class Move(db.Model):
@@ -209,8 +197,5 @@ class Move(db.Model):
             record = cls(name=name)
             db.session.add(record)
             db.session.commit()
-            logging.info(f"Returning newly created record {record}")
-        else:
-            logging.info(f"Returning existing record {record}")
         return record
 

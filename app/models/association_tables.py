@@ -39,9 +39,6 @@ class PlayerMatch(db.Model):
             record = cls(player_id=player_id, match_id=match_id)
             db.session.add(record)
             db.session.commit()
-            logging.info(f"Returning newly created record {record}")
-        else:
-            logging.info(f"Returning existing record {record}")
         return record
 
 # defines the many-to-many relationship between the PlayerMatch table above and the Pokemon table
@@ -88,9 +85,6 @@ class PlayerMatchPokemon(db.Model):
             record = cls(player_match_id=player_match_id, pokemon_id=pokemon_id)
             db.session.add(record)
             db.session.commit()
-            logging.info(f"Returning newly created record {record}")
-        else:
-            logging.info(f"Returning existing record {record}")
         return record
 
 # defines relationship between PlayerMatchPokemonTable and the Move table.

@@ -30,9 +30,6 @@ class Format(db.Model):
             format_record = cls(name=name)
             db.session.add(format_record)
             db.session.commit()
-            logging.info(f"Returning newly created record {format_record}")
-        else:
-            logging.info(f"Returning existing record {format_record}")
         return format_record
 
 

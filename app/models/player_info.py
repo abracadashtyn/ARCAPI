@@ -27,7 +27,4 @@ class Player(db.Model):
             player_record = cls(name=name)
             db.session.add(player_record)
             db.session.commit()
-            logging.info(f"Returning newly created record {player_record}")
-        else:
-            logging.info(f"Returning existing record {player_record}")
         return player_record
