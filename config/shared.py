@@ -9,4 +9,10 @@ class Config(object):
 
     # default delay to wait between requests when scraping data so as to not hammer APIs or get rate-limited
     REQUEST_DELAY = 3
-    CURRENT_FORMAT_ID = 1 # TODO set this as as database param or something?
+
+    # Config values for use in the UI
+    CURRENT_FORMAT_ID = 1
+    MIN_ANDROID_VERSION = 1
+    MIN_IOS_VERSION = 1
+    MIN_WEB_VERSION = 1
+    MIN_CATALOG_VERSION = 1

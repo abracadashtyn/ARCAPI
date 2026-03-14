@@ -27,4 +27,4 @@ def handle_error(error):
     return {'success': False, 'error': 'Internal server error'}, 500
 
 from app.api.v0 import abilities_namespace, formats_namespace, items_namespace, matches_namespace, moves_namespace, \
-                        players_namespace, pokemon_namespace, types_namespace
+                        players_namespace, pokemon_namespace, types_namespace, config_namespace
