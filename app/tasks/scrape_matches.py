@@ -58,11 +58,12 @@ def scrape_new(format_id, wait):
                     logging.info(f"Waiting {current_app.config['REQUEST_DELAY']} seconds to call showdown api")
                     time.sleep(current_app.config['REQUEST_DELAY'])
                 try:
-                    match_parser = ShowdownMatchParser(match_json, format, throw_if_exists=True)
+                    match_parser = ShowdownMatchParser(match_json, format, wait, throw_if_exists=True)
                     match_parser.parse_log_details()
                     matches_added_count += 1
                 except AlreadyExistsException:
                     # a record for the match already exists; continue to the next one
+                    logging.info("Match already exists, skipping.")
                     continue
                 except Exception as e:
                     # any exception thrown beyond AlreadyExistsException is a genuine processing error. log it and continue
@@ -135,16 +136,13 @@ def scrape_historic(format_id, wait):
     while len(matches_json) > 0:
         for match_json in matches_json:
             logging.info(f"Processing match {match_json['id']}")
-            if wait:
-                logging.info(f"Waiting {current_app.config['REQUEST_DELAY']} seconds to call showdown api")
-                time.sleep(current_app.config['REQUEST_DELAY'])
-
             try:
-                match_parser = ShowdownMatchParser(match_json, format, throw_if_exists=True)
+                match_parser = ShowdownMatchParser(match_json, format, wait, throw_if_exists=True)
                 match_parser.parse_log_details()
                 matches_added_count += 1
             except AlreadyExistsException:
                 # a record for the match already exists; continue to the next one
+                logging.info("Match already exists, skipping.")
                 continue
             except Exception as e:
                 # any exception thrown beyond AlreadyExistsException is a genuine processing error. log it and continue
@@ -205,16 +203,13 @@ def scrape_all(format_id, wait, reprocess_seen):
     while len(matches_json) > 0:
         for match_json in matches_json:
             logging.info(f"Processing match {match_json['id']}")
-            if wait:
-                logging.info(f"Waiting {current_app.config['REQUEST_DELAY']} seconds to call showdown api")
-                time.sleep(current_app.config['REQUEST_DELAY'])
             try:
-
-                match_parser = ShowdownMatchParser(match_json, format, throw_if_exists=False if reprocess_seen else True)
+                match_parser = ShowdownMatchParser(match_json, format, wait, throw_if_exists=False if reprocess_seen else True)
                 match_parser.parse_log_details()
                 matches_added_count += 1
             except AlreadyExistsException:
                 # a record for the match already exists; continue to the next one
+                logging.info("Match already exists, skipping.")
                 continue
             except Exception as e:
                 # any exception thrown beyond AlreadyExistsException is a genuine processing error. log it and continue

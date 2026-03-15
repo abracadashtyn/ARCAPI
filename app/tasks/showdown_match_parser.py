@@ -1,8 +1,10 @@
 import logging
 import os
 import re
+import time
 
 import requests
+from flask import current_app
 
 from app import db
 from app.exceptions import AlreadyExistsException
@@ -10,7 +12,7 @@ from app.models import Match, Format, Player, PlayerMatch, Pokemon, PokemonType,
 
 
 class ShowdownMatchParser:
-    def __init__(self, match_json, format, throw_if_exists=True, local=False):
+    def __init__(self, match_json, format, wait, throw_if_exists=True, local=False):
         id_strings = match_json['id'].split("-")
         if len(id_strings) != 2:
             raise Exception(f"unable to parse match format {match_json['id']}")
@@ -32,6 +34,10 @@ class ShowdownMatchParser:
         else:
             if throw_if_exists:
                 raise AlreadyExistsException(f"Match ID {match_json['id']} already exists")
+
+        if wait:
+            logging.info(f"Waiting {current_app.config['REQUEST_DELAY']} seconds to call showdown api")
+            time.sleep(current_app.config['REQUEST_DELAY'])
 
         if local:
             file_path = os.path.join(os.getcwd(), 'app', 'static', 'test_data',
