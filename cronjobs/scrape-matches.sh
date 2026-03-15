@@ -8,7 +8,7 @@ echo "-----------------------------------------"
 
 source /root/ReplayGenieAPI/.env.production
 cd /root/ReplayGenieAPI
-/root/ReplayGenieAPI/venv/bin/flask showdown scrape-new
+/root/ReplayGenieAPI/venv/bin/flask showdown scrape-new -w
 
 EXIT_CODE=$?
 END_TIME=$(date +%s)

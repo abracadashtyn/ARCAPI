@@ -11,7 +11,7 @@ class Config(object):
     REQUEST_DELAY = 3
 
     # Config values for use in the UI
-    CURRENT_FORMAT_ID = 1
+    CURRENT_FORMAT_ID = 2
     MIN_ANDROID_VERSION = 1
     MIN_IOS_VERSION = 1
     MIN_WEB_VERSION = 1
