@@ -20,7 +20,7 @@ def showdown():
 
 @showdown.command('scrape-new')
 @click.option('--format_id', '-f', type=int)
-@click.option('--wait', '-w', is_flag=True, default=False,
+@click.option('--wait', '-w', is_flag=True, default=True,
               help='whether to wait REQUEST_DELAY seconds before calling showdown API (to not hammer it or get rate limited)')
 def scrape_new(format_id, wait):
     logging.basicConfig(level=logging.INFO)
@@ -54,11 +54,8 @@ def scrape_new(format_id, wait):
         for match_json in matches_json:
             if match_json["uploadtime"] >= last_match_timestamp:
                 logging.info(f"Processing match {match_json['id']}")
-                if wait:
-                    logging.info(f"Waiting {current_app.config['REQUEST_DELAY']} seconds to call showdown api")
-                    time.sleep(current_app.config['REQUEST_DELAY'])
                 try:
-                    match_parser = ShowdownMatchParser(match_json, format, wait, throw_if_exists=True)
+                    match_parser = ShowdownMatchParser.construct_from_json(match_json, format, wait, throw_if_exists=True)
                     match_parser.parse_log_details()
                     matches_added_count += 1
                 except AlreadyExistsException:
@@ -137,7 +134,7 @@ def scrape_historic(format_id, wait):
         for match_json in matches_json:
             logging.info(f"Processing match {match_json['id']}")
             try:
-                match_parser = ShowdownMatchParser(match_json, format, wait, throw_if_exists=True)
+                match_parser = ShowdownMatchParser.construct_from_json(match_json, format, wait, throw_if_exists=True)
                 match_parser.parse_log_details()
                 matches_added_count += 1
             except AlreadyExistsException:
@@ -204,7 +201,7 @@ def scrape_all(format_id, wait, reprocess_seen):
         for match_json in matches_json:
             logging.info(f"Processing match {match_json['id']}")
             try:
-                match_parser = ShowdownMatchParser(match_json, format, wait, throw_if_exists=False if reprocess_seen else True)
+                match_parser = ShowdownMatchParser.construct_from_json(match_json, format, wait, throw_if_exists=False if reprocess_seen else True)
                 match_parser.parse_log_details()
                 matches_added_count += 1
             except AlreadyExistsException:

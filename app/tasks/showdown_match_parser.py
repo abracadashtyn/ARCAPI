@@ -12,33 +12,16 @@ from app.models import Match, Format, Player, PlayerMatch, Pokemon, PokemonType,
 
 
 class ShowdownMatchParser:
-    def __init__(self, match_json, format, wait, throw_if_exists=True, local=False):
-        id_strings = match_json['id'].split("-")
-        if len(id_strings) != 2:
-            raise Exception(f"unable to parse match format {match_json['id']}")
-        try:
-            showdown_id = int(id_strings[1])
-        except ValueError:
-            raise Exception(f"Match ID {id_strings[1]} is not numeric; unsure how to handle. ")
+    def __init__(self, match_record, wait, local=False):
+        # match record can be constructed from showdown json using the class method below, or it can be passed in directly
+        self.match_record = match_record
 
-        self.match_record = Match.query.filter_by(showdown_id=showdown_id).first()
-        if self.match_record is None:
-            self.match_record = Match()
-            self.match_record.showdown_id = showdown_id
-            self.match_record.upload_time = match_json["uploadtime"]
-            self.match_record.rating = match_json["rating"]
-            self.match_record.private = match_json["private"]
-            self.match_record.format = format
-            db.session.add(self.match_record)
-            db.session.commit()
-        else:
-            if throw_if_exists:
-                raise AlreadyExistsException(f"Match ID {match_json['id']} already exists")
-
+        # if true, delay so as to not hammer showdown api
         if wait:
             logging.info(f"Waiting {current_app.config['REQUEST_DELAY']} seconds to call showdown api")
             time.sleep(current_app.config['REQUEST_DELAY'])
 
+        # fetch the detailed log data for this particular match and save for later operations
         if local:
             file_path = os.path.join(os.getcwd(), 'app', 'static', 'test_data',
                                      f'{self.match_record.format.name}-{self.match_record.showdown_id}.txt')
@@ -52,6 +35,34 @@ class ShowdownMatchParser:
             log_string = replay_log_response.text
 
         self.log_lines = log_string.splitlines()
+
+
+    @classmethod
+    def construct_from_json(cls, match_json, format, wait, throw_if_exists=True, local=False):
+        id_strings = match_json['id'].split("-")
+        if len(id_strings) != 2:
+            raise Exception(f"unable to parse match format {match_json['id']}")
+        try:
+            showdown_id = int(id_strings[1])
+        except ValueError:
+            raise Exception(f"Match ID {id_strings[1]} is not numeric; unsure how to handle. ")
+
+        match_record = Match.query.filter_by(showdown_id=showdown_id).first()
+        if match_record is None:
+            match_record = Match()
+            match_record.showdown_id = showdown_id
+            match_record.upload_time = match_json["uploadtime"]
+            match_record.rating = match_json["rating"]
+            match_record.private = match_json["private"]
+            match_record.format = format
+            db.session.add(match_record)
+            db.session.commit()
+        else:
+            if throw_if_exists:
+                raise AlreadyExistsException(f"Match ID {match_json['id']} already exists")
+
+        return cls(match_record, wait, local)
+
 
     def clean_and_split_line(self, line):
         return line.lstrip('|').rstrip('|').split('|')
@@ -198,10 +209,16 @@ class ShowdownMatchParser:
                     raise Exception(f"Moveset is null, which should not happen!")
 
                 moves = pkmn_info[4].split(',')
+                move_ids = []
                 for move in moves:
                     move_record = Move.get_or_create(self.camel_case_to_spaced(move))
-                    if move_record not in pmp_record.moves:
-                        pmp_record.moves.append(move_record)
+                    move_ids.append(move_record.id)
+                else:
+                    pmp_record.move_1_id = move_ids[0] if len(move_ids) >= 1 else None
+                    pmp_record.move_2_id = move_ids[1] if len(move_ids) >= 2 else None
+                    pmp_record.move_3_id = move_ids[2] if len(move_ids) >= 3 else None
+                    pmp_record.move_4_id = move_ids[3] if len(move_ids) >= 4 else None
+
 
                 # [11]=',,,,,<tera_type>]'
                 if pkmn_info[11] != "":
