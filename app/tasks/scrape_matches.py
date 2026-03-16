@@ -247,6 +247,7 @@ def assign_set_id():
     logging.basicConfig(level=logging.INFO)
     format_cache = {}
 
+    fix_matches = []
     set_id = db.session.query(Match.set_id).order_by(Match.set_id.desc()).first()
     set_id = set_id[0] + 1 if set_id[0] is not None else 0
     logging.info(f"Will start incrementing set ids from {set_id}")
@@ -323,7 +324,7 @@ def assign_set_id():
             ).all()
             poke_match_map = {int(x[0]): x[1] for x in pokemon_data}
 
-            print(f"\tmatch to pokemon map {poke_match_map}")
+            logging.info(f"match to pokemon map {poke_match_map}")
 
             # loop through all the matches and group them into sets.
             match_sets = []
@@ -333,23 +334,24 @@ def assign_set_id():
                 # assign the pokemon to the match for comparison
                 if match['id'] not in poke_match_map.keys():
                     logging.error(f"Could not locate pokemon for match with id {match['id']}")
-                    exit(10)
+                    fix_matches.append(match['id'])
+                    continue
                 match['pokemon'] = poke_match_map[match['id']]
 
-                print(f"\tProcessing match {match}")
+                logging.info(f"Processing match {match}")
 
                 #if the current match position is lower than the previous or is already filled in this set, then we've
                 # looped around to a new set. Add the previous set to the list and start populating a new one
                 if match['position'] <= previous or match_set[match['position']] is not None:
-                    print(f"\tMatch {match['id']} position {match['position']} is less than previous position {previous}; adding new set.")
+                    logging.info(f"Match {match['id']} position {match['position']} is less than previous position {previous}; adding new set.")
                     match_sets.append(match_set)
                     match_set = {1: None, 2: None, 3: None}
 
                 # check to make sure the pokemon match any previous matches in the set. If not, it's a new set.
                 elif match['position'] > 1 and previous != 0 and match['pokemon'] != match_set[previous]['pokemon']:
-                    print(f'\tmatch {match['id']} at position {match['position']} has different pokemon than previous\n'
-                          f'\t({match['pokemon']} versus {match_set[previous]['pokemon']})\n'
-                          f'\tcreating new set.')
+                    logging.info(f'match {match['id']} at position {match['position']} has different pokemon than previous\n'
+                          f'({match['pokemon']} versus {match_set[previous]['pokemon']})\n'
+                          f'creating new set.')
                     match_sets.append(match_set)
                     match_set = {1: None, 2: None, 3: None}
 
@@ -358,7 +360,7 @@ def assign_set_id():
 
             match_sets.append(match_set)
 
-            print(f'\tfound {len(match_sets)} match sets:: {json.dumps(match_sets, indent=2)}')
+            logging.info(f'found {len(match_sets)} match sets:: {json.dumps(match_sets, indent=2)}')
 
             # assign a set id to each defined set of matches
             for match_index, match_set in enumerate(match_sets):
@@ -396,12 +398,12 @@ def assign_set_id():
                         .first()
 
                     if prev_set is not None:
-                        print(f'\tFound possible previous set with id {prev_set[0]}; checking pokemon to verify')
+                        logging.info(f'Found possible previous set with id {prev_set[0]}; checking pokemon to verify')
                         prev_match_pokemon = pokemon_data_base_query.filter(PlayerMatch.match_id == prev_set[0]).first()
-                        print(f'\tprev_match_pokemon: {prev_match_pokemon}')
+                        logging.info(f'prev_match_pokemon: {prev_match_pokemon}')
 
                         if all([True if x['pokemon'] == prev_match_pokemon[1] else False for x in match_set.values() if x is not None]):
-                            print(f"\tAlso matched previous pokemon!")
+                            logging.info(f"Also matched previous pokemon!")
                             logging.info(f"Appending this match to existing set with set_id {prev_set.set_id}")
                             stmt = update(Match).where(Match.id.in_([x['id'] for x in match_set.values() if x is not None])).values(set_id=prev_set.set_id)
                             db.session.execute(stmt)
@@ -422,3 +424,4 @@ def assign_set_id():
         logging.info('fetching next batch of match records.')
 
     logging.info(f"Finished assigning set_ids")
+    logging.info(f"Errored on matches {fix_matches}")
