@@ -7,7 +7,7 @@ import requests
 from flask import current_app
 
 from app import db
-from app.exceptions import AlreadyExistsException
+from app.exceptions import AlreadyExistsException, CustomGameException
 from app.models import Match, Format, Player, PlayerMatch, Pokemon, PokemonType, PlayerMatchPokemon, Item, Ability, Move
 
 
@@ -138,8 +138,8 @@ class ShowdownMatchParser:
     def parse_pokemon(self):
         teams = [x for x in self.log_lines if x.startswith("|showteam|")]
         if len(teams) != 2:
-            raise Exception(f"There should be two 'showteam' records, one for each player, but , but {len(teams)} were "
-                            f"found in the log data.")
+            raise CustomGameException(f"There should be two 'showteam' records, one for each player,"
+                                      f" but {len(teams)} were found in the log data.")
 
         for team in teams:
             team_info = re.search('\|showteam\|(p[1,2])\|(.*)', team)

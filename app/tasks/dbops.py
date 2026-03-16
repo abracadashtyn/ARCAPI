@@ -2,9 +2,8 @@ import logging
 import os
 
 import click
-from sqlalchemy import delete
-
 from app import db
+from app.exceptions import CustomGameException
 from app.tasks import bp
 from app.models import PlayerMatchPokemon, PlayerMatch, Match
 from app.tasks.showdown_match_parser import ShowdownMatchParser
@@ -43,4 +42,8 @@ def reprocess_matches(ids, wait):
         if match:
             logging.info(f"Processing match with id {match.id}, '{match.format.name}-{match.showdown_id}'")
             match_parser = ShowdownMatchParser(match, wait)
-            match_parser.parse_log_details()
+            try:
+                match_parser.parse_log_details()
+            except CustomGameException:
+                logging.info("This is a custom game; deleting record")
+                match_parser.match_record.delete()

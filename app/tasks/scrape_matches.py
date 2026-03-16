@@ -8,7 +8,7 @@ from flask import current_app
 from sqlalchemy import literal_column, update, exists, func, distinct
 from sqlalchemy.orm import aliased
 from app import db
-from app.exceptions import AlreadyExistsException
+from app.exceptions import AlreadyExistsException, CustomGameException
 from app.models import Format, Match, PlayerMatch, Player, PlayerMatchPokemon
 from app.tasks import bp
 from app.tasks.showdown_match_parser import ShowdownMatchParser
@@ -57,12 +57,18 @@ def scrape_new(format_id, wait):
         for match_json in matches_json:
             if match_json["uploadtime"] >= last_match_timestamp:
                 logging.info(f"Processing match {match_json['id']}")
+                match_parser = None
                 try:
                     match_parser = ShowdownMatchParser.construct_from_json(match_json, format.id, wait, throw_if_exists=True)
                     match_parser.parse_log_details()
                     matches_added_count += 1
                 except AlreadyExistsException:
                     logging.info(f"Match {match_json['id']} already exists, skipping.")
+                    continue
+                except CustomGameException:
+                    logging.error("This is a custom game. Will delete any data populated by it and skip.")
+                    if match_parser:
+                        match_parser.match_record.delete()
                     continue
                 except Exception as e:
                     # any exception thrown beyond AlreadyExistsException is a genuine processing error. log it and continue
@@ -136,6 +142,7 @@ def scrape_historic(format_id, wait):
     while len(matches_json) > 0:
         for match_json in matches_json:
             logging.info(f"Processing match {match_json['id']}")
+            match_parser = None
             try:
                 match_parser = ShowdownMatchParser.construct_from_json(match_json, format.id, wait, throw_if_exists=True)
                 match_parser.parse_log_details()
@@ -143,6 +150,11 @@ def scrape_historic(format_id, wait):
             except AlreadyExistsException:
                 # a record for the match already exists; continue to the next one
                 logging.info("Match already exists, skipping.")
+                continue
+            except CustomGameException:
+                logging.error("This is a custom game. Will delete any data populated by it and skip.")
+                if match_parser:
+                    match_parser.match_record.delete()
                 continue
             except Exception as e:
                 # any exception thrown beyond AlreadyExistsException is a genuine processing error. log it and continue
@@ -205,6 +217,7 @@ def scrape_all(format_id, wait, reprocess_seen):
     while len(matches_json) > 0:
         for match_json in matches_json:
             logging.info(f"Processing match {match_json['id']}")
+            match_parser = None
             try:
                 match_parser = ShowdownMatchParser.construct_from_json(match_json, format.id, wait, throw_if_exists=False if reprocess_seen else True)
                 match_parser.parse_log_details()
@@ -212,6 +225,11 @@ def scrape_all(format_id, wait, reprocess_seen):
             except AlreadyExistsException:
                 # a record for the match already exists; continue to the next one
                 logging.info("Match already exists, skipping.")
+                continue
+            except CustomGameException:
+                logging.error("This is a custom game. Will delete any data populated by it and skip.")
+                if match_parser:
+                    match_parser.match_record.delete()
                 continue
             except Exception as e:
                 # any exception thrown beyond AlreadyExistsException is a genuine processing error. log it and continue
