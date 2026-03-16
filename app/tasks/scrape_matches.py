@@ -245,9 +245,7 @@ def scrape_all(format_id, wait, reprocess_seen):
 @showdown.command('assign-set')
 def assign_set_id():
     logging.basicConfig(level=logging.INFO)
-    format_cache = {}
 
-    fix_matches = []
     set_id = db.session.query(Match.set_id).order_by(Match.set_id.desc()).first()
     set_id = set_id[0] + 1 if set_id[0] is not None else 0
     logging.info(f"Will start incrementing set ids from {set_id}")
@@ -293,7 +291,6 @@ def assign_set_id():
             break
 
         for result in batch:
-            time.sleep(2)
             logging.info('-------------------')
             logging.info(f"Parsing record {result}")
 
@@ -334,8 +331,7 @@ def assign_set_id():
                 # assign the pokemon to the match for comparison
                 if match['id'] not in poke_match_map.keys():
                     logging.error(f"Could not locate pokemon for match with id {match['id']}")
-                    fix_matches.append(match['id'])
-                    continue
+                    exit(9)
                 match['pokemon'] = poke_match_map[match['id']]
 
                 logging.info(f"Processing match {match}")
@@ -359,8 +355,7 @@ def assign_set_id():
                 previous = match['position']
 
             match_sets.append(match_set)
-
-            logging.info(f'found {len(match_sets)} match sets:: {json.dumps(match_sets, indent=2)}')
+            logging.info(f'found {len(match_sets)} match sets')
 
             # assign a set id to each defined set of matches
             for match_index, match_set in enumerate(match_sets):
@@ -411,7 +406,9 @@ def assign_set_id():
                     else:
                         logging.info("No existing set found to match this record. Will create new set id for it.")
 
-                stmt = update(Match).where(Match.id.in_([x['id'] for x in match_set.values() if x is not None])).values(set_id=set_id)
+                set_match_ids = [x['id'] for x in match_set.values() if x is not None]
+                logging.info(f"Assigning match ids {set_match_ids} to set id {set_id}")
+                stmt = update(Match).where(Match.id.in_(set_match_ids)).values(set_id=set_id)
                 #logging.info(f'Will update set id with statement {stmt.compile(compile_kwargs={"literal_binds": True})}')
                 db.session.execute(stmt)
                 set_id += 1
@@ -424,4 +421,3 @@ def assign_set_id():
         logging.info('fetching next batch of match records.')
 
     logging.info(f"Finished assigning set_ids")
-    logging.info(f"Errored on matches {fix_matches}")
