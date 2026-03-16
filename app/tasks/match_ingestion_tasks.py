@@ -5,7 +5,7 @@ import time
 import click
 import requests
 from flask import current_app
-from sqlalchemy import literal_column, update, exists, func, distinct
+from sqlalchemy import literal_column, update, exists
 from sqlalchemy.orm import aliased
 from app import db
 from app.exceptions import AlreadyExistsException, CustomGameException
@@ -20,6 +20,8 @@ list_replays_url = "https://replay.pokemonshowdown.com/search.json"
 def showdown():
     """Commands to scrape matches from showdown urls"""
     pass
+
+#TODO combine all scrape commands into single
 
 @showdown.command('scrape-new')
 @click.option('--format_id', '-f', type=int)
@@ -81,6 +83,9 @@ def scrape_new(format_id, wait):
                     }
                     with open(error_file_name, 'a', encoding='utf-8') as f:
                         f.write(json.dumps(error_json) + "\n")
+                    if match_parser:
+                        db.session.delete(match_parser.match_record)
+                        db.session.commit()
                     continue
 
             else:
@@ -168,6 +173,9 @@ def scrape_historic(format_id, wait):
                 }
                 with open(error_file_name, 'a', encoding='utf-8') as f:
                     f.write(json.dumps(error_json) + "\n")
+                if match_parser:
+                    db.session.delete(match_parser.match_record)
+                    db.session.commit()
                 continue
 
         # 51 is the limit of matches that can be returned by this call, so if there are 51, there might be more results
@@ -244,6 +252,9 @@ def scrape_all(format_id, wait, reprocess_seen):
                 }
                 with open(error_file_name, 'a', encoding='utf-8') as f:
                     f.write(json.dumps(error_json) + "\n")
+                if match_parser:
+                    db.session.delete(match_parser.match_record)
+                    db.session.commit()
                 continue
 
         # 51 is the limit of matches that can be returned by this call, so if there are 51, there might be more results
