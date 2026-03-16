@@ -46,4 +46,5 @@ def reprocess_matches(ids, wait):
                 match_parser.parse_log_details()
             except CustomGameException:
                 logging.info("This is a custom game; deleting record")
-                match_parser.match_record.delete()
+                db.session.delete(match_parser.match_record)
+                db.session.commit()

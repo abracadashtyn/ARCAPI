@@ -68,7 +68,8 @@ def scrape_new(format_id, wait):
                 except CustomGameException:
                     logging.error("This is a custom game. Will delete any data populated by it and skip.")
                     if match_parser:
-                        match_parser.match_record.delete()
+                        db.session.delete(match_parser.match_record)
+                        db.session.commit()
                     continue
                 except Exception as e:
                     # any exception thrown beyond AlreadyExistsException is a genuine processing error. log it and continue
@@ -154,7 +155,8 @@ def scrape_historic(format_id, wait):
             except CustomGameException:
                 logging.error("This is a custom game. Will delete any data populated by it and skip.")
                 if match_parser:
-                    match_parser.match_record.delete()
+                    db.session.delete(match_parser.match_record)
+                    db.session.commit()
                 continue
             except Exception as e:
                 # any exception thrown beyond AlreadyExistsException is a genuine processing error. log it and continue
@@ -229,7 +231,8 @@ def scrape_all(format_id, wait, reprocess_seen):
             except CustomGameException:
                 logging.error("This is a custom game. Will delete any data populated by it and skip.")
                 if match_parser:
-                    match_parser.match_record.delete()
+                    db.session.delete(match_parser.match_record)
+                    db.session.commit()
                 continue
             except Exception as e:
                 # any exception thrown beyond AlreadyExistsException is a genuine processing error. log it and continue
