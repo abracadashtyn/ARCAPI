@@ -88,7 +88,7 @@ class MatchList(Resource):
     @matches_ns.doc('list_matches')
     @matches_ns.param('page', 'Page number', type='integer', default=1)
     @matches_ns.param('limit', 'Items per page', type='integer', default=default_match_limit)
-    @matches_ns.param('format_id', 'Format ID', default=1, type='integer')
+    @matches_ns.param('format_id', 'Format ID', type='integer')
     @matches_ns.param('rated_only', 'If true, returns only matches that are rated.', type='boolean', default=False)
     @matches_ns.param('order_by', 'Sort results by time (newest to oldest) or rating (highest to lowest)',
                       type='string', enum=['time', 'rating'], default='time')

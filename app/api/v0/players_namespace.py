@@ -123,7 +123,7 @@ class PlayerRoute(Resource):
                 'id': pokemon_record[0],
                 'name': pokemon_record[1],
                 'usage_count': pokemon_record[2],
-                'image_url': Pokemon.get_image_url_from_name(pokemon_record[1]),
+                'image_url': Pokemon.image_url_from_name(pokemon_record[1]),
             })
 
         response = {

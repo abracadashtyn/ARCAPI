@@ -1,10 +1,7 @@
-import logging
-import os
-
 import sqlalchemy as sa
 import sqlalchemy.orm as so
 from typing import Optional, List
-from flask import Blueprint, current_app, url_for
+from flask import url_for
 from sqlalchemy import func
 
 from app import db
@@ -40,14 +37,10 @@ class PokemonType(db.Model):
         }
 
     def get_image_url(self):
-        return url_for(endpoint='static',
-                filename=f'images/types/{format_name_to_image_file(self.name)}',
-                _external=True)
+        return self.image_url_from_name(self.name)
 
     def get_tera_image_url(self):
-        return url_for(endpoint='static',
-                filename=f'images/tera/{format_name_to_image_file(self.name)}',
-                _external=True)
+        return self.tera_image_url_from_name(self.name)
 
     @classmethod
     def get_or_create(cls, name: str):
@@ -58,6 +51,17 @@ class PokemonType(db.Model):
             db.session.commit()
         return record
 
+    @classmethod
+    def image_url_from_name(cls, name):
+        return url_for(endpoint='static',
+                filename=f'images/types/{format_name_to_image_file(name)}',
+                _external=True)
+
+    @classmethod
+    def tera_image_url_from_name(cls, name):
+        return url_for(endpoint='static',
+                       filename=f'images/tera/{format_name_to_image_file(name)}',
+                       _external=True)
 
 class Pokemon(db.Model):
     __tablename__ = 'pokemon'
@@ -97,16 +101,7 @@ class Pokemon(db.Model):
 
     def get_image_url(self):
         # TODO add logic to return image for parent if child image does not exist
-        return url_for(endpoint='static',
-                filename=f'images/pokemon/{format_name_to_image_file(self.name)}',
-                _external=True)
-
-    @staticmethod
-    def get_image_url_from_name(name):
-        # TODO figure out how to handle returning parent image if child does not exist - db field?
-        return url_for(endpoint='static',
-                       filename=f'images/pokemon/{format_name_to_image_file(name)}',
-                       _external=True)
+        return self.image_url_from_name(self.name)
 
     @classmethod
     def get_or_create(cls,name: str, pokedex_number:int=None):
@@ -117,6 +112,12 @@ class Pokemon(db.Model):
             db.session.add(record)
             db.session.commit()
         return record
+
+    @classmethod
+    def image_url_from_name(cls, name):
+        return url_for(endpoint='static',
+                       filename=f'images/pokemon/{format_name_to_image_file(name)}',
+                       _external=True)
 
 
 class Item(db.Model):
@@ -132,10 +133,11 @@ class Item(db.Model):
         return {
             'id': self.id,
             'name': self.name,
-            'image_url': url_for(endpoint='static',
-                     filename=f'images/items/{format_name_to_image_file(self.name)}',
-                     _external=True)
+            'image_url': self.get_image_url()
         }
+
+    def get_image_url(self):
+        return self.image_url_from_name(self.name)
 
     @classmethod
     def get_or_create(cls, name: str):
@@ -149,6 +151,12 @@ class Item(db.Model):
             from app.tasks.scrape_pokemon_data import scrape_item_image
             scrape_item_image(record.name)
         return record
+
+    @classmethod
+    def image_url_from_name(cls, name):
+        return url_for(endpoint='static',
+                filename=f'images/items/{format_name_to_image_file(name)}',
+                _external=True)
 
 
 class Ability(db.Model):
