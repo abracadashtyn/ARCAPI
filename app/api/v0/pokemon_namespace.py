@@ -107,6 +107,8 @@ pokemon_detail_model = api.inherit('PokemonDetail', pokemon_model, {
     'forms': fields.List(fields.Nested(pokemon_form_model)),
     'match_count': fields.Integer,
     'match_percent': fields.Float,
+    'team_count': fields.Integer,
+    'team_percent': fields.Float,
     'top_items': fields.List(fields.Nested(item_frequency_model)),
     'top_tera_types': fields.List(fields.Nested(tera_type_frequency_model)),
     'top_moves': fields.List(fields.Nested(move_frequency_model)),
@@ -176,6 +178,19 @@ class PokemonDetail(Resource):
         total_matches = Match.query.count()
         percent_used = match_count/total_matches * 100
         response['data']['match_percent'] = percent_used
+
+        # find count and percentage of matches this mon is used in
+        team_count = db.session.query(
+            func.count(func.distinct(PlayerMatch.id))
+        ).select_from(
+            filtered_pmp
+        ).join(
+            PlayerMatch, filtered_pmp.c.player_match_id == PlayerMatch.id
+        ).scalar()
+        response['data']['team_count'] = team_count
+        total_teams = PlayerMatch.query.count()
+        team_percent = team_count / total_teams * 100
+        response['data']['team_percent'] = team_percent
 
         # most common items
         most_common_items = db.session.query(
