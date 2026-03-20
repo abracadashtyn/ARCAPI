@@ -175,7 +175,7 @@ class PokemonDetail(Resource):
             PlayerMatch, filtered_pmp.c.player_match_id == PlayerMatch.id
         ).scalar()
         response['data']['match_count'] = match_count
-        total_matches = Match.query.count()
+        total_matches = Match.query.filter_by(format_id=format_id).count()
         percent_used = match_count/total_matches * 100
         response['data']['match_percent'] = percent_used
 
