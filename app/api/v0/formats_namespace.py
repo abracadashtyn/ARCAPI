@@ -1,10 +1,13 @@
 from flask import request
 from flask_restx import Namespace, fields, Resource
+from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
 
+from app import db
 from app.api.PaginationUtils import PaginationUtils
 from app.api.v0 import api, pagination_model, error_response
-from app.models import Format
+from app.api.v0.pokemon_namespace import teammate_frequency_model
+from app.models import Format, Match, PlayerMatchPokemon, PlayerMatch, Pokemon
 
 format_ns = Namespace('Formats', description='Endpoints related to game format, as specified by showdown API.')
 api.add_namespace(format_ns, path='/formats')
@@ -35,3 +38,58 @@ class FormatList(Resource):
             return PaginationUtils.paginate_query(query, page, limit)
         except SQLAlchemyError as e:
             api.abort(500, f'Error querying database for formats: {e}')
+
+
+format_detail_model = api.inherit('FormatDetailModel', format_model, {
+    'match_count': fields.Integer,
+    'top_pokemon': fields.List(fields.Nested(teammate_frequency_model)),
+})
+format_detail_response = api.model('FormatDetailResponse', {
+    'success': fields.Boolean,
+    'data': fields.List(fields.Nested(format_model))
+})
+@format_ns.route('/<int:format_id>')
+class FormatDetail(Resource):
+    @format_ns.doc('get_format')
+    @format_ns.response(404, 'Format not found', error_response)
+    @format_ns.response(500, 'Internal server error', error_response)
+    def get(self, format_id):
+        print(f"Reached format detail route")
+        format = Format.query.get(format_id)
+        if format is None:
+            api.abort(404, 'Format not found')
+
+        response = {
+            'success': True,
+            'data': format.to_dict()
+        }
+
+        # get total count of matches in this format
+        match_count = Match.query.filter_by(format_id=format_id).count()
+        response['data']['match_count'] = match_count
+
+        # get the top 6 used mons in this format
+        top_mons_query = db.session.query(
+            PlayerMatchPokemon.pokemon_id,
+            func.count('*').label('pokemon_count')
+        ).select_from(
+            PlayerMatchPokemon
+        ).join(
+            PlayerMatch, PlayerMatchPokemon.player_match_id == PlayerMatch.id
+        ).join(
+            Match, PlayerMatch.match_id == Match.id
+        ).filter(
+            Match.format_id == format_id,
+        ).group_by(
+            PlayerMatchPokemon.pokemon_id,
+        ).order_by(
+            func.count('*').desc()
+        ).limit(6).all()
+        response['data']['top_pokemon'] = []
+        for pokemon_data in top_mons_query:
+            pokemon_dict = Pokemon.query.get(pokemon_data[0]).to_dict()
+            pokemon_dict['count'] = pokemon_data[1]
+            response['data']['top_pokemon'].append(pokemon_dict)
+
+        return response
+
