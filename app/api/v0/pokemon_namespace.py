@@ -180,6 +180,14 @@ class PokemonDetail(Resource):
         # pokemon. Required as mysql was not materializing cte and queries were lagging.
         table_name = f"temp_filtered_pmp_{uuid.uuid4().hex[:8]}"
         try:
+            pokemon_ids = [pokemon_id]
+            # check for ids of cosmetic children to filter the query on
+            children = Pokemon.query.filter(
+                Pokemon.base_species_id == pokemon_id,
+                Pokemon.is_cosmetic_only == True
+            ).all()
+            pokemon_ids += [x.id for x in children]
+
             db.session.execute(text(f"""
                 CREATE TEMPORARY TABLE {table_name} AS
                 SELECT 
@@ -195,8 +203,10 @@ class PokemonDetail(Resource):
                 FROM pm_pokemon pmp
                 JOIN player_matches pm ON pmp.player_match_id = pm.id
                 JOIN matches m ON pm.match_id = m.id
-                WHERE m.format_id = :format_id AND pmp.pokemon_id = :pokemon_id
-            """), {'format_id': format_id, 'pokemon_id': pokemon_id})
+                WHERE 
+                    m.format_id = :format_id AND 
+                    pmp.pokemon_id IN :pokemon_ids
+            """), {'format_id': format_id, 'pokemon_ids': tuple(pokemon_ids)})
 
             # find number of matches this mon appears in on at least one team
             match_count = db.session.execute(text(f"""
@@ -325,20 +335,22 @@ class PokemonDetail(Resource):
             # aggregate top 6 most common teammates
             most_common_teammates = db.session.execute(text(f"""
                 SELECT
-                    pmp.pokemon_id,
+                    CASE WHEN p.is_cosmetic_only=1 THEN p.base_species_id ELSE p.id END as pokemon_id,
                     count(*) as pokemon_count
                 FROM
                     {table_name} as tmp
                 JOIN
                     pm_pokemon as pmp on pmp.player_match_id = tmp.player_match_id
+                JOIN
+                    pokemon as p on pmp.pokemon_id = p.id
                 WHERE
-                    pmp.pokemon_id != :pokemon_id
+                    pmp.pokemon_id NOT IN :pokemon_ids
                 GROUP BY
-                    pmp.pokemon_id
+                    CASE WHEN p.is_cosmetic_only=1 THEN p.base_species_id ELSE p.id END
                 ORDER BY
                     pokemon_count DESC
                 LIMIT 6
-            """), {'pokemon_id': pokemon_id}).fetchall()
+            """), {'pokemon_ids': tuple(pokemon_ids)}).fetchall()
             response['data']['top_teammates'] = []
             for team in most_common_teammates:
                 mon_record = Pokemon.query.get(team[0]).to_dict()

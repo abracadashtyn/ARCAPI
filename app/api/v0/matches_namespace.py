@@ -12,7 +12,7 @@ from app.api.v0.moves_namespace import move_model
 from app.api.v0.players_namespace import player_model
 from app.api.v0.pokemon_namespace import pokemon_model, pokemon_base_species_model
 from app.api.v0.types_namespace import pokemon_type_model
-from app.models import Match, PlayerMatchPokemon, PlayerMatch, Player
+from app.models import Match, PlayerMatchPokemon, PlayerMatch, Player, Pokemon
 
 matches_ns = Namespace('Matches', description='Operations related to matches')
 api.add_namespace(matches_ns, path='/matches')
@@ -244,7 +244,21 @@ class Search(Resource):
         if 'pokemon' in search_data and len(search_data['pokemon']) > 0:
             pokemon_query_chunks = []
             for pokemon_filter in search_data['pokemon']:
-                filter_conditions = [PlayerMatchPokemon.pokemon_id == pokemon_filter['id']]
+                filter_conditions = []
+                ids = [pokemon_filter['id']]
+
+                # also check if any cosmetic children have matches
+                children = Pokemon.query.filter(
+                    Pokemon.base_species_id==pokemon_filter['id'],
+                    Pokemon.is_cosmetic_only == True
+                ).all()
+                ids += [x.id for x in children]
+
+                if len(ids) == 1:
+                    filter_conditions.append(PlayerMatchPokemon.pokemon_id == pokemon_filter['id'])
+                else:
+                    filter_conditions.append(PlayerMatchPokemon.pokemon_id.in_(ids))
+
                 if 'item_id' in pokemon_filter:
                     filter_conditions.append(PlayerMatchPokemon.item_id == pokemon_filter['item_id'])
                 if 'tera_type_id' in pokemon_filter:

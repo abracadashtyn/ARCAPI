@@ -3,7 +3,7 @@ import logging
 
 from flask import request
 from flask_restx import Namespace, fields, Resource
-from sqlalchemy import func
+from sqlalchemy import func, case
 from sqlalchemy.exc import SQLAlchemyError
 
 from app import db, redis_cache
@@ -87,7 +87,10 @@ class FormatDetail(Resource):
 
         # get the top n used mons in this format (n=param value or 6 if none is provided)
         top_mons_query = db.session.query(
-            PlayerMatchPokemon.pokemon_id,
+            case(
+                (Pokemon.is_cosmetic_only == True, Pokemon.base_species_id),
+                else_=Pokemon.id
+            ).label("pokemon_id"),
             func.count('*').label('pokemon_count')
         ).select_from(
             PlayerMatchPokemon
@@ -95,10 +98,15 @@ class FormatDetail(Resource):
             PlayerMatch, PlayerMatchPokemon.player_match_id == PlayerMatch.id
         ).join(
             Match, PlayerMatch.match_id == Match.id
+        ).join(
+            Pokemon, PlayerMatchPokemon.pokemon_id == Pokemon.id
         ).filter(
             Match.format_id == format_id,
         ).group_by(
-            PlayerMatchPokemon.pokemon_id,
+            case(
+                (Pokemon.is_cosmetic_only == True, Pokemon.base_species_id),
+                else_=Pokemon.id
+            ),
         ).order_by(
             func.count('*').desc()
         ).limit(

@@ -106,23 +106,30 @@ class PlayerRoute(Resource):
 
         pokemon_records = db.session\
             .query(
-                Pokemon.id,
-                Pokemon.name,
+                case(
+                    (Pokemon.is_cosmetic_only == True, Pokemon.base_species_id),
+                    else_=Pokemon.id
+                ).label("pokemon_id"),
                 func.count(PlayerMatchPokemon.pokemon_id).label('usage_count'))\
             .join(PlayerMatchPokemon, PlayerMatchPokemon.pokemon_id == Pokemon.id)\
             .join(PlayerMatch)\
             .filter(PlayerMatch.player_id == player_record.id)\
-            .group_by(Pokemon.id, Pokemon.name)\
+            .group_by(
+                case(
+                    (Pokemon.is_cosmetic_only == True, Pokemon.base_species_id),
+                    else_=Pokemon.id
+                ))\
             .order_by(func.count(PlayerMatchPokemon.pokemon_id).desc())\
             .limit(6).all()
 
         response_data['most_used_pokemon'] = []
         for pokemon_record in pokemon_records:
+            name = Pokemon.query.get(pokemon_record[0]).name
             response_data['most_used_pokemon'].append({
                 'id': pokemon_record[0],
-                'name': pokemon_record[1],
-                'usage_count': pokemon_record[2],
-                'image_url': Pokemon.image_url_from_name(pokemon_record[1]),
+                'name': name,
+                'usage_count': pokemon_record[1],
+                'image_url': Pokemon.image_url_from_name(name),
             })
 
         response = {
