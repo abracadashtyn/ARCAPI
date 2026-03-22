@@ -57,7 +57,6 @@ class FormatDetail(Resource):
     @format_ns.response(404, 'Format not found', error_response)
     @format_ns.response(500, 'Internal server error', error_response)
     def get(self, format_id):
-        print(f"Reached format detail route")
         format = Format.query.get(format_id)
         if format is None:
             api.abort(404, 'Format not found')

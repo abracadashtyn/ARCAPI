@@ -1,3 +1,4 @@
+import time
 from collections import Counter
 
 from flask import request, current_app
@@ -159,6 +160,7 @@ class PokemonDetail(Resource):
 
         # create temporary table to pre-filter out only the relevant player_match_pokemon records for this format and
         # pokemon. Required as mysql was not materializing cte and queries were lagging.
+        start_time = time.perf_counter()
         db.session.execute(text("""
             CREATE TEMPORARY TABLE temp_filtered_pmp AS
             SELECT 
@@ -176,8 +178,11 @@ class PokemonDetail(Resource):
             JOIN matches m ON pm.match_id = m.id
             WHERE m.format_id = :format_id AND pmp.pokemon_id = :pokemon_id
         """), {'format_id': format_id, 'pokemon_id': pokemon_id})
+        end_time = time.perf_counter()
+        print(f"temp table construction took {end_time - start_time} seconds")
 
         # find number of matches this mon appears in on at least one team
+        start_time = time.perf_counter()
         match_count = db.session.execute(text("""
             SELECT
                 COUNT(DISTINCT pm.match_id)
@@ -190,8 +195,11 @@ class PokemonDetail(Resource):
         total_matches = Match.query.filter_by(format_id=format_id).count()
         percent_used = match_count / total_matches * 100
         response['data']['match_percent'] = percent_used
+        end_time = time.perf_counter()
+        print(f"match count took {end_time - start_time} seconds")
 
         # find count and percentage of teams this mon is used in
+        start_time = time.perf_counter()
         team_count= db.session.execute(text("""
             SELECT 
                 count(distinct pmp.player_match_id) 
@@ -201,8 +209,11 @@ class PokemonDetail(Resource):
         response['data']['team_count'] = team_count
         team_percent = team_count / (total_matches * 2) * 100
         response['data']['team_percent'] = team_percent
+        end_time = time.perf_counter()
+        print(f"team count took {end_time - start_time} seconds")
 
         # aggregate the top 6 most common items used
+        start_time = time.perf_counter()
         most_common_items = db.session.execute(text("""
             SELECT 
                 i.id,
@@ -219,6 +230,8 @@ class PokemonDetail(Resource):
                 item_count DESC
             LIMIT 6 
         """)).fetchall()
+        end_time = time.perf_counter()
+        print(f"most_common_items query took {end_time - start_time} seconds")
         response['data']['top_items'] = []
         for item in most_common_items:
             response['data']['top_items'].append({
@@ -229,6 +242,7 @@ class PokemonDetail(Resource):
             })
 
         # aggregate top 6 most common tera types
+        start_time = time.perf_counter()
         most_common_tera = db.session.execute(text("""
             SELECT 
                 t.id,
@@ -245,6 +259,8 @@ class PokemonDetail(Resource):
                 tera_type_count DESC
             LIMIT 6
         """)).fetchall()
+        end_time = time.perf_counter()
+        print(f"most common tera query took {end_time - start_time} seconds")
         response['data']['top_tera_types'] = []
         for type in most_common_tera:
             response['data']['top_tera_types'].append({
@@ -255,6 +271,7 @@ class PokemonDetail(Resource):
             })
 
         # aggregate top 6 most common abilities
+        start_time = time.perf_counter()
         most_common_abilities = db.session.execute(text("""
             SELECT
                 a.id,
@@ -271,6 +288,8 @@ class PokemonDetail(Resource):
                 ability_count DESC
             LIMIT 6
         """)).fetchall()
+        end_time = time.perf_counter()
+        print(f"most common abilities query took {end_time - start_time} seconds")
         response['data']['top_abilities'] = []
         for ability in most_common_abilities:
             response['data']['top_abilities'].append({
@@ -283,14 +302,20 @@ class PokemonDetail(Resource):
         # temp_filtered_pmp temporary table can't be reused in the same query, and when implemented as a cte it was not
         # being materialized but rather reconstructed 4 separate times, resulting in slow query times for mons with
         # many records in the PlayerMatchPokemon table.
+        start_time = time.perf_counter()
         move_1 = db.session.execute(text("""SELECT move_1_id, count(*) as move_count FROM temp_filtered_pmp WHERE move_1_id IS NOT NULL GROUP BY move_1_id""")).fetchall()
         move_2 = db.session.execute(text("""SELECT move_2_id, count(*) as move_count FROM temp_filtered_pmp WHERE move_2_id IS NOT NULL GROUP BY move_2_id""")).fetchall()
         move_3 = db.session.execute(text("""SELECT move_3_id, count(*) as move_count FROM temp_filtered_pmp WHERE move_3_id IS NOT NULL GROUP BY move_3_id""")).fetchall()
         move_4 = db.session.execute(text("""SELECT move_4_id, count(*) as move_count FROM temp_filtered_pmp WHERE move_4_id IS NOT NULL GROUP BY move_4_id""")).fetchall()
+        end_time = time.perf_counter()
+        print(f"most common moves queries took {end_time - start_time} seconds")
+        start_time = time.perf_counter()
         most_common_moves = Counter(dict(move_1))
         most_common_moves.update(dict(move_2))
         most_common_moves.update(dict(move_3))
         most_common_moves.update(dict(move_4))
+        end_time = time.perf_counter()
+        print(f"constructing counter for most common moves took {end_time - start_time} seconds")
         response['data']['top_moves'] = []
         for move in most_common_moves.most_common(6):
             response['data']['top_moves'].append({
@@ -300,6 +325,7 @@ class PokemonDetail(Resource):
             })
 
         # aggregate top 6 most common teammates
+        start_time = time.perf_counter()
         most_common_teammates = db.session.execute(text("""
             SELECT
                 pmp.pokemon_id,
@@ -316,6 +342,8 @@ class PokemonDetail(Resource):
                 pokemon_count DESC
             LIMIT 6
         """), {'pokemon_id': pokemon_id}).fetchall()
+        end_time = time.perf_counter()
+        print(f"most common teammates queries took {end_time - start_time} seconds")
         response['data']['top_teammates'] = []
         for team in most_common_teammates:
             mon_record = Pokemon.query.get(team[0]).to_dict()

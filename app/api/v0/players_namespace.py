@@ -71,7 +71,6 @@ class PlayerRoute(Resource):
     @players_ns.response(404, 'Player not found')
     @players_ns.marshal_with(player_response)
     def get(self, player_id):
-        print(f"Getting player {player_id}")
         player_record = Player.query.get_or_404(player_id)
         counts = db.session\
             .query(
