@@ -95,7 +95,9 @@ class Pokemon(db.Model):
         if self.base_species_id is not None:
             pkmn_dict['base_species'] = {
                 'name': self.base_species.name,
-                'id': self.base_species.id
+                'id': self.base_species.id,
+                'pokedex_number': self.base_species.pokedex_number,
+                'image_url': self.base_species.get_image_url()
             }
         return pkmn_dict
 

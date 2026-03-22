@@ -7,7 +7,7 @@ import requests
 from flask import current_app
 from sqlalchemy import literal_column, update, exists
 from sqlalchemy.orm import aliased
-from app import db
+from app import db, redis_cache
 from app.exceptions import AlreadyExistsException, CustomGameException
 from app.models import Format, Match, PlayerMatch, Player, PlayerMatchPokemon
 from app.tasks import bp
@@ -110,6 +110,12 @@ def scrape_new(format_id, wait):
             logging.info(f"There were {len(matches_json)} matches in these results, so we've seen everything")
             matches_json = []
 
+        # invalidate pokemon stats cache now that new data is present
+        keys = redis_cache.keys(f"pokemon_stats:{format_id}:*")
+        if keys:
+            redis_cache.delete(*keys)
+            logging.info(f"Cleared {len(keys)} cached entries for format {format_id}")
+
 
 @showdown.command('scrape-historic')
 @click.option('--format_id', '-f', type=int)
@@ -194,6 +200,12 @@ def scrape_historic(format_id, wait):
             logging.info(f"There were {len(matches_json)} matches in these results, so we've seen everything")
             matches_json = []
 
+        # invalidate pokemon stats cache now that new data is present
+        keys = redis_cache.keys(f"pokemon_stats:{format_id}:*")
+        if keys:
+            redis_cache.delete(*keys)
+            logging.info(f"Cleared {len(keys)} cached entries for format {format_id}")
+
 
 
 
@@ -272,6 +284,12 @@ def scrape_all(format_id, wait, reprocess_seen):
         else:
             logging.info(f"There were {len(matches_json)} matches in these results, so we've seen everything")
             matches_json = []
+
+        # invalidate pokemon stats cache now that new data is present
+        keys = redis_cache.keys(f"pokemon_stats:{format_id}:*")
+        if keys:
+            redis_cache.delete(*keys)
+            logging.info(f"Cleared {len(keys)} cached entries for format {format_id}")
 
 
 @showdown.command('assign-set')

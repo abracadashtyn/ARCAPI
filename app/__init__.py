@@ -1,5 +1,6 @@
 import os
 
+import redis
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
@@ -8,6 +9,12 @@ from config.shared import Config
 
 db = SQLAlchemy()
 migrate = Migrate()
+redis_cache = redis.Redis(
+    host='localhost',
+    port=6379,
+    decode_responses=True,
+    socket_connect_timeout=5
+)
 
 def create_app(config_class=None):
     app = Flask(__name__)
