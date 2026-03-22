@@ -34,8 +34,7 @@ def clear_pokemon():
 @cacheops.command('warm')
 @click.option('--format_id', '-f', type=int)
 def warm(format_id):
-
-    format_url = f"{current_app.config['BASE_URL']}/api/v0/formats/{format_id}"
+    format_url = f"{current_app.config['BASE_URL']}/api/v0/formats/{format_id}?top_pokemon_count=10"
     click.echo(f"Calling {format_url} to warm format cache")
     try:
         format_detail = requests.get(format_url)

@@ -80,6 +80,10 @@ def scrape(ctx, format_id, historical, all):
                 click.echo(f"Match {match_json['id']} with timestamp {match_json['uploadtime']} is older than"
                              f" {comparison_timestamp}. Match scraping is complete. Added {matches_added_count} matches "
                              f"to database.")
+                # invalidate pokemon and format stats cache now that new data is present
+                ctx.invoke(clear)
+                # warm cache for format and most commonly used pokemon
+                ctx.invoke(warm, format_id=format_id)
                 return
             else:
                 click.echo(f"Processing match {match_json['id']}")
@@ -131,7 +135,6 @@ def scrape(ctx, format_id, historical, all):
 
     # invalidate pokemon and format stats cache now that new data is present
     ctx.invoke(clear)
-
     # warm cache for format and most commonly used pokemon
     ctx.invoke(warm, format_id=format_id)
 
