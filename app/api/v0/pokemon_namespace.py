@@ -1,6 +1,8 @@
+from collections import Counter
+
 from flask import request, current_app
 from flask_restx import Namespace, fields, Resource
-from sqlalchemy import func, union_all, distinct
+from sqlalchemy import func, union_all, distinct, text
 from sqlalchemy.exc import SQLAlchemyError
 
 from app import db
@@ -155,55 +157,68 @@ class PokemonDetail(Resource):
         format_id = request.args.get('format_id', type=int) if 'format_id' in request.args \
             else current_app.config['CURRENT_FORMAT_ID']
 
-        filtered_pmp = db.session.query(
-            PlayerMatchPokemon
-        ).join(
-            PlayerMatch, PlayerMatchPokemon.player_match_id == PlayerMatch.id
-        ).join(
-            Match, PlayerMatch.match_id == Match.id
-        ).filter(
-            Match.format_id == format_id,
-            PlayerMatchPokemon.pokemon_id == pokemon_id
-        ).cte('filtered_pmp')
+        # create temporary table to pre-filter out only the relevant player_match_pokemon records for this format and
+        # pokemon. Required as mysql was not materializing cte and queries were lagging.
+        db.session.execute(text("""
+            CREATE TEMPORARY TABLE temp_filtered_pmp AS
+            SELECT 
+                pmp.id,
+                pmp.player_match_id,
+                pmp.ability_id,
+                pmp.item_id,
+                pmp.tera_type_id,
+                pmp.move_1_id,
+                pmp.move_2_id,
+                pmp.move_3_id,
+                pmp.move_4_id
+            FROM pm_pokemon pmp
+            JOIN player_matches pm ON pmp.player_match_id = pm.id
+            JOIN matches m ON pm.match_id = m.id
+            WHERE m.format_id = :format_id AND pmp.pokemon_id = :pokemon_id
+        """), {'format_id': format_id, 'pokemon_id': pokemon_id})
 
-        # find count and percentage of matches this mon is used in
-        match_count = db.session.query(
-            func.count(func.distinct(PlayerMatch.match_id))
-        ).select_from(
-            filtered_pmp
-        ).join(
-            PlayerMatch, filtered_pmp.c.player_match_id == PlayerMatch.id
-        ).scalar()
+        # find number of matches this mon appears in on at least one team
+        match_count = db.session.execute(text("""
+            SELECT
+                COUNT(DISTINCT pm.match_id)
+            FROM 
+                temp_filtered_pmp as pmp
+            JOIN 
+                player_matches as pm on pmp.player_match_id = pm.id
+        """)).scalar()
         response['data']['match_count'] = match_count
         total_matches = Match.query.filter_by(format_id=format_id).count()
-        percent_used = match_count/total_matches * 100
+        percent_used = match_count / total_matches * 100
         response['data']['match_percent'] = percent_used
 
         # find count and percentage of teams this mon is used in
-        team_count = db.session.query(
-            func.count(func.distinct(PlayerMatch.id))
-        ).select_from(
-            filtered_pmp
-        ).join(
-            PlayerMatch, filtered_pmp.c.player_match_id == PlayerMatch.id
-        ).scalar()
+        team_count= db.session.execute(text("""
+            SELECT 
+                count(distinct pmp.player_match_id) 
+            FROM
+                temp_filtered_pmp as pmp
+        """)).scalar()
         response['data']['team_count'] = team_count
         team_percent = team_count / (total_matches * 2) * 100
         response['data']['team_percent'] = team_percent
 
-        # most common items
-        most_common_items = db.session.query(
-            Item.id,
-            Item.name,
-            func.count('*').label('item_count')
-        ).join(
-            filtered_pmp, filtered_pmp.c.item_id == Item.id
-        ).group_by(
-            Item.id,
-            Item.name
-        ).order_by(
-            func.count('*').desc()
-        ).limit(6).all()
+        # aggregate the top 6 most common items used
+        most_common_items = db.session.execute(text("""
+            SELECT 
+                i.id,
+                i.name,
+                count(*) as item_count
+            FROM
+                temp_filtered_pmp as pmp
+            JOIN
+                items as i on pmp.item_id = i.id
+            GROUP BY
+                i.id,
+                i.name
+            ORDER BY
+                item_count DESC
+            LIMIT 6 
+        """)).fetchall()
         response['data']['top_items'] = []
         for item in most_common_items:
             response['data']['top_items'].append({
@@ -213,41 +228,49 @@ class PokemonDetail(Resource):
                 'count': item[2],
             })
 
-        # most common tera types
-        most_common_tera = db.session.query(
-            PokemonType.id,
-            PokemonType.name,
-            func.count('*').label('tera_type_count')
-        ).join(
-            filtered_pmp, filtered_pmp.c.tera_type_id == PokemonType.id
-        ).group_by(
-            PokemonType.id,
-            PokemonType.name
-        ).order_by(
-            func.count('*').desc()
-        ).limit(6).all()
+        # aggregate top 6 most common tera types
+        most_common_tera = db.session.execute(text("""
+            SELECT 
+                t.id,
+                t.name,
+                count(*) as tera_type_count
+            FROM
+                temp_filtered_pmp as pmp
+            JOIN
+                 pokemon_types as t on pmp.tera_type_id = t.id
+            GROUP BY
+                t.id,
+                t.name
+            ORDER BY
+                tera_type_count DESC
+            LIMIT 6
+        """)).fetchall()
         response['data']['top_tera_types'] = []
         for type in most_common_tera:
             response['data']['top_tera_types'].append({
                 'id': type[0],
                 'name': type[1],
-                'image_url': PokemonType.image_url_from_name(type[1]),
+                'image_url': PokemonType.tera_image_url_from_name(type[1]),
                 'count': type[2],
             })
 
-        # most common abilities
-        most_common_abilities = db.session.query(
-            Ability.id,
-            Ability.name,
-            func.count('*').label('abilities_count')
-        ).join(
-            filtered_pmp, filtered_pmp.c.ability_id == Ability.id
-        ).group_by(
-            Ability.id,
-            Ability.name
-        ).order_by(
-            func.count('*').desc()
-        ).limit(6).all()
+        # aggregate top 6 most common abilities
+        most_common_abilities = db.session.execute(text("""
+            SELECT
+                a.id,
+                a.name,
+                count(*) as ability_count
+            FROM
+                temp_filtered_pmp as pmp
+            JOIN
+                abilities as a on pmp.ability_id = a.id
+            GROUP BY
+                a.id,
+                a.name
+            ORDER BY
+                ability_count DESC
+            LIMIT 6
+        """)).fetchall()
         response['data']['top_abilities'] = []
         for ability in most_common_abilities:
             response['data']['top_abilities'].append({
@@ -256,41 +279,43 @@ class PokemonDetail(Resource):
                 'count': ability[2],
             })
 
-        # most common moves
-        move1 = db.session.query(filtered_pmp.c.move_1_id.label('move_id')).filter(filtered_pmp.c.move_1_id.is_not(None))
-        move2 = db.session.query(filtered_pmp.c.move_2_id.label('move_id')).filter(filtered_pmp.c.move_2_id.is_not(None))
-        move3 = db.session.query(filtered_pmp.c.move_3_id.label('move_id')).filter(filtered_pmp.c.move_3_id.is_not(None))
-        move4 = db.session.query(filtered_pmp.c.move_4_id.label('move_id')).filter(filtered_pmp.c.move_4_id.is_not(None))
-        all_moves = union_all(move1, move2, move3, move4).subquery()
-        most_common_moves = db.session.query(
-            all_moves.c.move_id,
-            func.count('*').label('move_count')
-        ).group_by(
-            all_moves.c.move_id
-        ).order_by(
-            func.count('*').desc()
-        ).limit(6).all()
+        # aggregate top 6 most common moves. Each column must be queried individually and combined in python, as the
+        # temp_filtered_pmp temporary table can't be reused in the same query, and when implemented as a cte it was not
+        # being materialized but rather reconstructed 4 separate times, resulting in slow query times for mons with
+        # many records in the PlayerMatchPokemon table.
+        move_1 = db.session.execute(text("""SELECT move_1_id, count(*) as move_count FROM temp_filtered_pmp WHERE move_1_id IS NOT NULL GROUP BY move_1_id""")).fetchall()
+        move_2 = db.session.execute(text("""SELECT move_2_id, count(*) as move_count FROM temp_filtered_pmp WHERE move_2_id IS NOT NULL GROUP BY move_2_id""")).fetchall()
+        move_3 = db.session.execute(text("""SELECT move_3_id, count(*) as move_count FROM temp_filtered_pmp WHERE move_3_id IS NOT NULL GROUP BY move_3_id""")).fetchall()
+        move_4 = db.session.execute(text("""SELECT move_4_id, count(*) as move_count FROM temp_filtered_pmp WHERE move_4_id IS NOT NULL GROUP BY move_4_id""")).fetchall()
+        most_common_moves = Counter(dict(move_1))
+        most_common_moves.update(dict(move_2))
+        most_common_moves.update(dict(move_3))
+        most_common_moves.update(dict(move_4))
         response['data']['top_moves'] = []
-        for move in most_common_moves:
+        for move in most_common_moves.most_common(6):
             response['data']['top_moves'].append({
                 'id': move[0],
                 'name': Move.query.get(move[0]).name,
                 'count': move[1],
             })
 
-        # most common teammates
-        most_common_teammates = db.session.query(
-            PlayerMatchPokemon.pokemon_id,
-            func.count('*').label('pokemon_count')
-        ).join(
-            filtered_pmp, filtered_pmp.c.player_match_id == PlayerMatchPokemon.player_match_id
-        ).filter(
-            PlayerMatchPokemon.pokemon_id != filtered_pmp.c.pokemon_id
-        ).group_by(
-            PlayerMatchPokemon.pokemon_id,
-        ).order_by(
-            func.count('*').desc()
-        ).limit(6).all()
+        # aggregate top 6 most common teammates
+        most_common_teammates = db.session.execute(text("""
+            SELECT
+                pmp.pokemon_id,
+                count(*) as pokemon_count
+            FROM
+                temp_filtered_pmp as tmp
+            JOIN
+                pm_pokemon as pmp on pmp.player_match_id = tmp.player_match_id
+            WHERE
+                pmp.pokemon_id != :pokemon_id
+            GROUP BY
+                pmp.pokemon_id
+            ORDER BY
+                pokemon_count DESC
+            LIMIT 6
+        """), {'pokemon_id': pokemon_id}).fetchall()
         response['data']['top_teammates'] = []
         for team in most_common_teammates:
             mon_record = Pokemon.query.get(team[0]).to_dict()
