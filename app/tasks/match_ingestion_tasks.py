@@ -83,7 +83,8 @@ def scrape(ctx, format_id, historical, all):
                 # invalidate pokemon and format stats cache now that new data is present
                 ctx.invoke(clear)
                 # warm cache for format and most commonly used pokemon
-                ctx.invoke(warm, format_id=format_id)
+                ctx.invoke(warm, format_id=format_id, api_version=0)
+                ctx.invoke(warm, format_id=format_id, api_version=1)
                 return
             else:
                 click.echo(f"Processing match {match_json['id']}")

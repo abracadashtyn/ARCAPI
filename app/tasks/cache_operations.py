@@ -33,15 +33,15 @@ def clear_pokemon():
 @cacheops.command('warm')
 @click.option('--format_id', '-f', type=int)
 @click.option('--api_version', '-v', type=int, default=0, help="Version of the API to warm the cache for.")
-def warm(format_id):
-    format_url = f"{current_app.config['BASE_URL']}/api/v0/formats/{format_id}?top_pokemon_count=10"
+def warm(format_id, api_version):
+    format_url = f"{current_app.config['BASE_URL']}/api/v{api_version}/formats/{format_id}?top_pokemon_count=10"
     click.echo(f"Calling {format_url} to warm format cache")
     try:
         format_detail = requests.get(format_url)
         if format_detail.status_code == 200:
             format_detail = format_detail.json()
             for pokemon in format_detail['data']['top_pokemon']:
-                pokemon_url = f"{current_app.config['BASE_URL']}/api/v0/pokemon/{pokemon['id']}?format_id={format_id}"
+                pokemon_url = f"{current_app.config['BASE_URL']}/api/v{api_version}/pokemon/{pokemon['id']}?format_id={format_id}"
                 click.echo(f"Calling {pokemon_url} to warm cache for pokemon {pokemon['name']}")
                 pokemon_detail = requests.get(pokemon_url)
                 if pokemon_detail.status_code != 200:
