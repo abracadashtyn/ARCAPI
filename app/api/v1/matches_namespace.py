@@ -345,6 +345,7 @@ class SearchMatches(Resource):
                         query_dict['where'].append(f"pm1.won_match=0")
                 if 'pokemon' in search_data['team1'] and len(search_data['team1']['pokemon']) > 0:
                     query_dict['join'].append(f"pm_pokemon as pmp1 on pm1.id=pmp1.player_match_id")
+                    query_dict = generate_pokemon_clauses(query_dict, search_data['team1']['pokemon'], 'pmp1')
 
             if 'team2' in search_data:
                 query_dict['join'].append(f"player_matches as pm2 on m.id=pm2.match_id")
@@ -357,6 +358,7 @@ class SearchMatches(Resource):
                         query_dict['where'].append(f"pm2.won_match=0")
                 if 'pokemon' in search_data['team2'] and len(search_data['team2']['pokemon']) > 0:
                     query_dict['join'].append(f"pm_pokemon as pmp2 on pm2.id=pmp2.player_match_id")
+                    query_dict = generate_pokemon_clauses(query_dict, search_data['team2']['pokemon'], 'pmp2')
 
             if 'team1' in search_data and 'team2' in search_data:
                 query_dict['where'].append(f"pm1.player_id!=pm2.player_id")
