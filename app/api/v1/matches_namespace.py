@@ -416,7 +416,7 @@ class SearchMatches(Resource):
         offset = (page - 1) * limit
         query_string += f" LIMIT {limit+1} OFFSET {offset}"
 
-        print(f"Constructed query:\n{query_string}\n-------")
+        #print(f"Constructed query:\n{query_string}\n-------")
         match_search_results = db.session.execute(text(query_string)).all()
         match_ids = [x[0] for x in match_search_results]
 
