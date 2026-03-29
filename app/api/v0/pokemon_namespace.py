@@ -139,14 +139,14 @@ class PokemonDetail(Resource):
         format_id = request.args.get('format_id', type=int) if 'format_id' in request.args \
             else current_app.config['CURRENT_FORMAT_ID']
 
-        # see if a cached response for this pokemon already exists, and if so, return that instead of recomputing stats
-        cache_key = f"pokemon_stats:v0:{format_id}:{pokemon_id}"
+        # no longer caching responses for deprecated v0 api
+        '''cache_key = f"pokemon_stats:v0:{format_id}:{pokemon_id}"
         cached_response = redis_cache.get(cache_key)
         if cached_response is not None:
             cached_response = json.loads(cached_response)
             if cached_response['success'] is True:
                 logging.info(f"Serving PokemonDetail response for pokemon id {pokemon_id} from cache.")
-                return cached_response
+                return cached_response'''
 
         # if no cached response exists already, calculate that and store it
         logging.info(f"No cached PokemonDetail response found; computing stats for pokemon with id {pokemon_id}")
@@ -357,10 +357,9 @@ class PokemonDetail(Resource):
                 mon_record['count'] = team[1]
                 response['data']['top_teammates'].append(mon_record)
 
-            # store response in cache for faster retrieval next time. Cache duration is 35 min, but will be manually
-            # invalidated by ingestion method when new data is added
-            redis_cache.setex(cache_key, 2100, json.dumps(response))
-            logging.info(f"Stored response in cache with key {cache_key}")
+            # no longer caching
+            '''redis_cache.setex(cache_key, 2100, json.dumps(response))
+            logging.info(f"Stored response in cache with key {cache_key}")'''
 
         except Exception as e:
             logging.error(f"Error constructing stats for pokemon with id {pokemon_id}: {e}")

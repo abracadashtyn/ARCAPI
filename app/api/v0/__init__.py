@@ -1,4 +1,6 @@
-from flask import Blueprint
+import json
+
+from flask import Blueprint, request, current_app
 from flask_restx import Api, fields
 
 
@@ -19,6 +21,21 @@ error_response = api_v0.model('ErrorResponse', {
 @api_v0.errorhandler(Exception)
 def handle_error(error):
     return {'success': False, 'error': 'Internal server error'}, 500
+
+@bp.after_request
+def add_deprecation_header(response):
+    if request.path.startswith("/api/v0/"):
+        response.headers["Deprecation"] = "true"
+        response.headers["Sunset"] = "Fri, 01 May 2026 00:00:00 GMT"
+        response.headers["Link"] = f'<{current_app.config.get('BASE_URL')}/api/v1/>; rel="successor-version"'
+
+        if response.content_type == "application/json":
+            data = response.get_json()
+            if isinstance(data, dict):
+                data["_deprecated"] = ("/api/v0 is deprecated. Please migrate to /api/v1/. This version will be removed "
+                                       "in a future release.")
+                response.data = json.dumps(data)
+    return response
 
 from app.api.v0 import abilities_namespace, config_namespace, formats_namespace, items_namespace, matches_namespace,\
                         moves_namespace, players_namespace, pokemon_namespace, sets_namespace, types_namespace

@@ -59,6 +59,11 @@ def echo_keys():
 @click.option('--format_id', '-f', type=int)
 @click.option('--api_version', '-v', type=int, default=1, help="Version of the API to warm the cache for.")
 def warm(format_id, api_version):
+    if api_version == 0:
+        click.echo("WARNING: api v0 is deprecated. No cache is maintained for these endpoints any longer.")
+        delete_keys("*:v0:*")
+        return
+
     if format_id is None:
         format_id = current_app.config.get('CURRENT_FORMAT_ID')
     

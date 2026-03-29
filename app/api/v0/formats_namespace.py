@@ -60,15 +60,16 @@ class FormatDetail(Resource):
     @format_ns.response(404, 'Format not found', error_response)
     @format_ns.response(500, 'Internal server error', error_response)
     def get(self, format_id):
-        # try to pull from cache first
         top_pokemon_count = request.args.get('top_pokemon_count', 6, type=int)
-        cache_key = f"format_stats:v0:{format_id}:{top_pokemon_count}"
+
+        # no longer caching responses for deprecated v0 endpoints
+        '''cache_key = f"format_stats:v0:{format_id}:{top_pokemon_count}"
         cached_response = redis_cache.get(cache_key)
         if cached_response is not None:
             cached_response = json.loads(cached_response)
             if cached_response['success'] is True:
                 logging.info(f"Serving FormatDetail response for format id {format_id} from cache.")
-                return cached_response
+                return cached_response'''
 
         # if no cached response found, recalculate
         format = Format.query.get(format_id)
@@ -110,7 +111,7 @@ class FormatDetail(Resource):
         ).order_by(
             func.count('*').desc()
         ).limit(
-            request.args.get('top_pokemon_count', 6, type=int)
+            top_pokemon_count
         ).all()
         response['data']['top_pokemon'] = []
         for pokemon_data in top_mons_query:
@@ -118,10 +119,9 @@ class FormatDetail(Resource):
             pokemon_dict['count'] = pokemon_data[1]
             response['data']['top_pokemon'].append(pokemon_dict)
 
-        # store response in cache for faster retrieval next time. Cache duration is 35 min, but will be manually
-        # invalidated by ingestion method when new data is added
-        redis_cache.setex(cache_key, 2100, json.dumps(response))
-        logging.info(f"Stored response in cache with key {cache_key}")
+        # no longer caching
+        '''redis_cache.setex(cache_key, 2100, json.dumps(response))
+        logging.info(f"Stored response in cache with key {cache_key}")'''
 
         return response
 
