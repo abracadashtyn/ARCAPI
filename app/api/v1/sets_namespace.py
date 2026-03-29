@@ -63,11 +63,13 @@ class SetList(Resource):
         page = request.args.get('page', 1, type=int)
         limit = request.args.get('limit', default_match_limit, type=int)
 
-        query = db.session.query(
-            Match.set_id,
-            func.max(Match.rating).label('max_rating'),
-            func.count(Match.id).label('match_count'),
-        ).group_by(Match.set_id)
+        query = db.session\
+            .query(
+                Match.set_id,
+                func.max(Match.rating).label('max_rating'),
+                func.count(Match.id).label('match_count'))\
+            .filter(Match.set_id is not None)\
+            .group_by(Match.set_id)
 
         if 'format_id' in request.args:
             format_id = request.args.get('format_id', type=int)

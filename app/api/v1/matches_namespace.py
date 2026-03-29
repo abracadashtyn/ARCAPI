@@ -30,7 +30,7 @@ def format_match_data(query_results):
         for player_match_record in match_record.players:
             match_dict['players'].append({
                 'id': player_match_record.player_id,
-                'winner': player_match_record.won_match,
+                'is_winner': player_match_record.won_match,
                 'name': player_match_record.player.name,
                 'team': [{
                     'id': x.pokemon_id,
@@ -132,7 +132,7 @@ pokemon_instance_model = api_v1.inherit("PokemonInstance", pokemon_model, {
     'moves': fields.List(fields.Nested(move_model))
 })
 player_match_detail_model = api_v1.inherit("PlayerMatchDetails", player_model, {
-    'winner': fields.Boolean(example=True),
+    'is_winner': fields.Boolean(example=True),
     'team': fields.List(fields.Nested(pokemon_instance_model)),
 })
 match_detail_response = api_v1.model('MatchDetailResponse', {
