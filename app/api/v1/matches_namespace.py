@@ -487,8 +487,10 @@ class BestMatchesFromPreviousDay(Resource):
         search_data = {
             "format_id": format_id,
             "order_by": "rating",
-            "time_range_start": now - timedelta(hours=24),
-            "time_range_end": now,
+            "time_range": {
+                "start": (now - timedelta(hours=24)).timestamp(),
+                "end": now.timestamp()
+            },
             "limit": 50,
             "page": 1
         }
