@@ -80,10 +80,8 @@ def scrape(ctx, format_id, historical, all):
                 click.echo(f"Match {match_json['id']} with timestamp {match_json['uploadtime']} is older than"
                              f" {comparison_timestamp}. Match scraping is complete. Added {matches_added_count} matches "
                              f"to database.")
-                # invalidate pokemon and format stats cache now that new data is present
-                ctx.invoke(clear)
                 # warm cache for format and most commonly used pokemon
-                ctx.invoke(warm, format_id=format_id, api_version=0)
+                #ctx.invoke(warm, format_id=format_id, api_version=0)
                 ctx.invoke(warm, format_id=format_id, api_version=1)
                 return
             else:
@@ -134,10 +132,8 @@ def scrape(ctx, format_id, historical, all):
             click.echo(f"There were {len(matches_json)} matches in these results, so we've seen everything")
             matches_json = []
 
-    # invalidate pokemon and format stats cache now that new data is present
-    ctx.invoke(clear)
     # warm cache for format and most commonly used pokemon
-    ctx.invoke(warm, format_id=format_id)
+    ctx.invoke(warm, format_id=format_id, api_version=1)
 
 
 @showdown.command('assign-set')
