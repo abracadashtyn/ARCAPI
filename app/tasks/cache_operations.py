@@ -50,5 +50,15 @@ def warm(format_id, api_version):
         else:
             click.echo(f"ERROR: web request to warm cache for format {format_id} failed. "
                        f"{format_detail.status_code}: {format_detail.text}")
+
+        if api_version == 1:
+            # warm cache for new endpoint 'best_previous_day' that only exists in v1
+            best_prev_day_url = f"{current_app.config['BASE_URL']}/api/v{api_version}/matches/best_previous_day?format_id={format_id}"
+            click.echo(f"Calling {best_prev_day_url} to warm cache for home page top 50 matches in last 24 hours")
+            best_prev_response = requests.get(best_prev_day_url)
+            if best_prev_response.status_code != 200:
+                click.echo(f"ERROR: web request to warm cache for home page failed. "
+                           f"{best_prev_response.status_code}: {best_prev_response.text} ")
+
     except Exception as e:
         click.echo(f"ERROR: exception thrown while warming cache: {e}")

@@ -1,10 +1,14 @@
+import json
+import logging
+from datetime import datetime, timedelta
+
 from flask import request, current_app
 from flask_restx import Namespace, fields, Resource
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import selectinload
 
-from app import db
+from app import db, redis_cache
 from app.api.v1 import api_v1
 from app.api.v1.abilities_namespace import ability_model
 from app.api.v1.errors import APIError, error_response, NotFoundError, ValidationError
@@ -55,7 +59,7 @@ base_match_model = api_v1.model('BaseMatch', {
     'set_id': fields.String(example=205),
     'position_in_set': fields.Integer(example=3),
 })
-match_list_response = api_v1.model('MatchListResponse', {
+best_matches_response = api_v1.model('BestMatchesResponse', {
     'success': fields.Boolean(example=True),
     'data': fields.List(fields.Nested(api_v1.inherit('Match', base_match_model, {
         'players': fields.List(fields.Nested(api_v1.inherit("PlayerMatchDetails", player_model, {
@@ -65,7 +69,9 @@ match_list_response = api_v1.model('MatchListResponse', {
                 'tera_type': fields.Nested(pokemon_type_model)
             }))),
         }))),
-    }))),
+    })))
+})
+match_list_response = api_v1.inherit('MatchListResponse', best_matches_response, {
     'pagination': fields.Nested(pagination_model)
 })
 """Fetches a list of all matches"""
@@ -282,11 +288,10 @@ def generate_pokemon_clauses(query_dict, pokemon_filter_list, pmp_table_alias):
 """Endpoint to search matches on various critera as outlined by the search_request_model."""
 @matches_ns.route('/search')
 class SearchMatches(Resource):
-    @api_v1.expect(search_request_model, validate=True)
-    @matches_ns.response(500, 'Internal server error', error_response)
-    @matches_ns.marshal_with(match_list_response, code=200)
-    def post(self):
-        search_data = api_v1.payload
+    # actual search logic is in static helper function so it can also be used to get the top 50 ranked matches of the
+    # day in endpoint following this one.
+    @staticmethod
+    def perform_search(search_data):
         query_dict = {
             "select": [],
             "from": [],
@@ -450,3 +455,47 @@ class SearchMatches(Resource):
         # end_time = time.perf_counter()
         # print(f"Response time: {end_time - start_time}")
         return response_json
+
+    @api_v1.expect(search_request_model, validate=True)
+    @matches_ns.response(500, 'Internal server error', error_response)
+    @matches_ns.marshal_with(match_list_response, code=200)
+    def post(self):
+        search_data = api_v1.payload
+        return self.perform_search(search_data)
+
+
+"""Endpoint to return the top 50 matches from the last 24 hours."""
+@matches_ns.route('/best_previous_day')
+class BestMatchesFromPreviousDay(Resource):
+    @matches_ns.param('format_id', description='Format ID', type='integer', required=False)
+    @matches_ns.response(404, 'Pokemon not found', error_response)
+    @matches_ns.response(500, 'Internal server error', error_response)
+    @matches_ns.marshal_with(best_matches_response, code=200)
+    def get(self):
+        logging.basicConfig(level=logging.INFO)
+        format_id = request.args.get('format_id', current_app.config['CURRENT_FORMAT_ID'], type=int)
+        print(f"Format ID: {format_id}")
+        cache_key = f"best_matches_prev_day:{format_id}"
+        cached_response = redis_cache.get(cache_key)
+        if cached_response is not None:
+            cached_response = json.loads(cached_response)
+            if cached_response['success'] is True:
+                logging.info(f"Serving top 50 matches from last 24 hours for format {format_id} from cache.")
+                return cached_response
+
+        now = datetime.now()
+        search_data = {
+            "format_id": format_id,
+            "order_by": "rating",
+            "time_range_start": now - timedelta(hours=24),
+            "time_range_end": now,
+            "limit": 50,
+            "page": 1
+        }
+        response = SearchMatches.perform_search(search_data)
+        if response['success'] is True:
+            response.pop('pagination')
+            redis_cache.setex(cache_key, 2100, json.dumps(response))
+            logging.info(f"Stored response for top 50 best matches today in cache with key {cache_key}")
+
+        return response
