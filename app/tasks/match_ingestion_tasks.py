@@ -81,7 +81,6 @@ def scrape(ctx, format_id, historical, all):
                              f" {comparison_timestamp}. Match scraping is complete. Added {matches_added_count} matches "
                              f"to database.")
                 # warm cache for format and most commonly used pokemon
-                #ctx.invoke(warm, format_id=format_id, api_version=0)
                 ctx.invoke(warm, format_id=format_id, api_version=1)
                 return
             else:
@@ -313,3 +312,62 @@ def assign_set_id():
         click.echo('fetching next batch of match records.')
 
     click.echo(f"Finished assigning set_ids")
+
+@showdown.command('rerun-failed')
+def rerun_failed():
+    formats = Format.query.all()
+    formats_dict = {f.name: f.id for f in formats}
+
+    error_files_dir = os.path.join(os.getcwd(), 'app', 'tasks', 'errors')
+    error_files = []
+    with os.scandir(error_files_dir) as dir_contents:
+        error_files = [entry.name for entry in dir_contents if entry.is_file()]
+
+    for error_file in error_files:
+        click.echo(f"---------------------\nerror file name: {error_file}")
+        json_entries = []
+        jobs_failed_again = []
+        with open(os.path.join(error_files_dir, error_file), 'r') as f:
+            json_entries = [json.loads(x) for x in f]
+        for json_entry in json_entries:
+            click.echo(f"Processing match {json_entry['showdown_id']}\nOriginal error: '{json_entry['error']}'")
+            match_parser = None
+            try:
+                format_string_name = json_entry['showdown_id'].split('-')[0]
+                format_id = formats_dict[format_string_name]
+                match_parser = ShowdownMatchParser.construct_from_json(json_entry['match_json'], format_id, wait=True,
+                                                                       throw_if_exists=True)
+                match_parser.parse_log_details()
+                click.echo("Successfully reran job!")
+            except AlreadyExistsException:
+                click.echo(f"Match {json_entry['showdown_id']} already exists, skipping.")
+                continue
+            except CustomGameException:
+                click.echo("This is a custom game. Will delete any data populated by it and skip.")
+                if match_parser:
+                    db.session.delete(match_parser.match_record)
+                    db.session.commit()
+                continue
+            except Exception as e:
+                error_string = f"{type(e)} ({type(e).__name__}): str(e)"
+                click.echo(f"ERROR: problem processing match {json_entry['showdown_id']}: {error_string}")
+                jobs_failed_again.append({
+                    "showdown_id": json_entry['showdown_id'],
+                    "error": error_string,
+                    "failed_already": True,
+                    "prev_failure_reason": json_entry['error'],
+                    "match_json": json_entry['match_json']
+                })
+                if match_parser:
+                    db.session.delete(match_parser.match_record)
+                    db.session.commit()
+                continue
+
+        if len(jobs_failed_again) > 0:
+            click.echo(f"{len(jobs_failed_again)} jobs failed again.")
+            with open(os.path.join(error_files_dir, error_file), 'w', encoding='utf-8') as f:
+                for j in jobs_failed_again:
+                    f.write(json.dumps(j) + '\n')
+        else:
+            click.echo(f"All jobs successfully reran! Deleting error file.")
+            os.remove(os.path.join(error_files_dir, error_file))
