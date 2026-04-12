@@ -221,6 +221,49 @@ def scrape_showdown(local_mode, save_data):
 
         db.session.commit()
 
+
+""" to update showdown metadata like tier and isNonstandard, which can change as new formats and games are released. """
+@pokemon.command('update-metadata')
+def update_pokemon():
+    query_url = 'https://play.pokemonshowdown.com/data/pokedex.json'
+    response = requests.get(query_url)
+    if response.status_code != 200:
+        logging.error(f"Error scraping {query_url}: {response}")
+        raise Exception("Failed to scrape showdown.")
+
+    poke_data = response.json()
+    for pokemon in poke_data.values():
+        pokemon_record = Pokemon.query.filter(Pokemon.name == pokemon['name']).one_or_none()
+        if pokemon_record is None:
+            # only echo to terminal if this is a real pokemon we have no entry for - fake mons are indicated by a dex
+            # num < 0 and we do not store data on those by design.
+            if pokemon['num'] > 0:
+                click.echo(f"Not able to find associated record for pokemon {pokemon['name']}")
+            continue
+
+        if 'tier' in pokemon:
+            if pokemon_record.tier != pokemon['tier']:
+                click.echo(f"Need to update {pokemon_record.name}'s tier from {pokemon_record.tier} to {pokemon['tier']}")
+                pokemon_record.tier = pokemon['tier']
+        else:
+            # check to see if base form is present and if so, update if necessary
+            if pokemon_record.base_species_id is not None:
+                if pokemon_record.base_species.tier != pokemon_record.tier:
+                    click.echo(f"No tier provided in showdown data for pokemon {pokemon_record.name}; changing to match "
+                               f"parent tier {pokemon_record.base_species.tier} from {pokemon_record.tier}")
+                    pokemon_record.tier = pokemon_record.base_species.tier
+            else:
+                click.echo(f"Pokemon without base form {pokemon['name']} has no tier listed!")
+
+
+        if 'isNonstandard' in pokemon and pokemon_record.is_nonstandard != pokemon['isNonstandard']:
+            click.echo(f"need to update {pokemon_record.name}'s is_nonstandard from {pokemon_record.is_nonstandard} to "
+                       f"{pokemon['isNonstandard']}")
+            pokemon_record.is_nonstandard = pokemon['isNonstandard']
+
+    db.session.commit()
+
+
 """ Wrapper command to scrape all images using functions below"""
 @pokemon.command('scrape-images')
 @click.pass_context
