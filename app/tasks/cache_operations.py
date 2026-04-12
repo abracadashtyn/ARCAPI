@@ -81,7 +81,9 @@ def warm(format_id, api_version):
 
     # recreate cache for format endpoint. If this format is the current one, cache 50 pokemon. Will only cache 10
     # for non-current pokemon as less people will be looking for that data.
-    top_pokemon_count = 50 if format_id == current_app.config.get('CURRENT_FORMAT_ID') else 10
+    #top_pokemon_count = 50 if format_id == current_app.config.get('CURRENT_FORMAT_ID') else 10
+    # TODO revert after last Reg I tournament in May
+    top_pokemon_count = 50 if format_id in (2,3) else 10
     format_url = f"{current_app.config['BASE_URL']}/api/v{api_version}/formats/{format_id}?top_pokemon_count={top_pokemon_count}"
     click.echo(f"Calling {format_url} to warm format cache")
     try:
