@@ -114,7 +114,7 @@ def construct_match_detail_response(match_record):
     for player_match in match_record.players:
         response['data']['players'].append({
             'id': player_match.player_id,
-            'won_match': player_match.won_match,
+            'is_winner': player_match.won_match,
             'name': player_match.player.name,
             'team': [{
                 'id': x.pokemon_id,
