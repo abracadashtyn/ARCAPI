@@ -1,3 +1,4 @@
+from flask_limiter import RateLimitExceeded
 from flask_restx import fields
 
 from app.api.v1 import api_v1
@@ -38,6 +39,18 @@ def handle_api_error(error):
             'details': error.details
         }
     }, error.status
+
+# handler for rate limit exceeded errors
+@api_v1.errorhandler(RateLimitExceeded)
+def handle_rate_limit(error):
+    return {
+        'success': False,
+        'error': {
+            'code': 'RATE_LIMITED',
+            'message': f'Too many requests. Limit is {error.limit.limit}.',
+            'details': {}
+        }
+    }, 429
 
 # generic error handler for any Exceptions not caught by the above
 @api_v1.errorhandler(Exception)
