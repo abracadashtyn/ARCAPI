@@ -23,7 +23,7 @@ echo "Duration: ${MINUTES}m ${SECONDS}s (${DURATION} seconds)"
 echo "Exit code: ${P1_EXIT_CODE}"
 echo "-----------------------------------------"
 
-/root/ReplayGenieAPI/venv/bin/flask showdown scrape -f 1
+/root/ReplayGenieAPI/venv/bin/flask showdown scrape -f 3
 
 P2_EXIT_CODE=$?
 END_P2_TIME=$(date +%s)
@@ -32,7 +32,7 @@ DURATION=$((END_P2_TIME - END_P1_TIME))
 MINUTES=$((DURATION / 60))
 SECONDS=$((DURATION % 60))
 echo "-----------------------------------------"
-echo "Scraped all new matches in legacy format (Reg F): ${END_P2_TIMESTAMP}"
+echo "Scraped all new matches in new format (Reg M-A): ${END_P2_TIMESTAMP}"
 echo "Duration: ${MINUTES}m ${SECONDS}s (${DURATION} seconds)"
 echo "Exit code: ${P2_EXIT_CODE}"
 echo "-----------------------------------------"

@@ -9,6 +9,7 @@ class Format(db.Model):
     id: so.Mapped[int] = so.mapped_column(primary_key=True)
     name: so.Mapped[str] = so.mapped_column(sa.String(100))
     formatted_name: so.Mapped[Optional[str]] = so.mapped_column(sa.String(100))
+    is_historic: so.Mapped[Optional[bool]] = so.mapped_column(sa.Boolean)
 
     matches: so.Mapped[List['Match']] = so.relationship(back_populates='format')
 
@@ -20,6 +21,7 @@ class Format(db.Model):
             'id': self.id,
             'name': self.name,
             'formatted_name': self.formatted_name,
+            'is_historic': self.is_historic,
         }
 
     @classmethod
