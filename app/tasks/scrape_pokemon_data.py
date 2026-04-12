@@ -289,7 +289,7 @@ def scrape_pokemon_image_cmd(pokemon_id, pokemon_name):
 
 """ Item Image Functions"""
 def scrape_item_image(item_name):
-    item_image_base_url = 'https://www.serebii.net/itemdex/sprites/sv/'
+    item_image_base_url = 'https://www.serebii.net/itemdex/sprites/za/'
     serebii_formatted_name = ''.join([x.lower() for x in item_name if x.isalnum()])
     item_image_file = os.path.join(current_app.config['ITEM_IMAGES_DIR'], format_name_to_image_file(item_name))
     if not os.path.exists(item_image_file):
