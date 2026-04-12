@@ -12,7 +12,7 @@ from app.models import Match, Format, Player, PlayerMatch, Pokemon, PokemonType,
 
 
 class ShowdownMatchParser:
-    def __init__(self, match_record, wait, local=False):
+    def __init__(self, match_record, wait, local=False, log_from_json=None):
         # match record can be constructed from showdown json using the class method below, or it can be passed in directly
         self.match_record = match_record
 
@@ -28,11 +28,14 @@ class ShowdownMatchParser:
             with open(file_path, 'r', encoding='utf-8') as f:
                 log_string = f.read()
         else:
-            replay_log_url = f"https://replay.pokemonshowdown.com/{self.match_record.format.name}-{self.match_record.showdown_id}.log"
-            replay_log_response = requests.get(replay_log_url)
-            if replay_log_response.status_code != 200:
-                raise Exception(f"Something went wrong with web request: {replay_log_url}")
-            log_string = replay_log_response.text
+            if log_from_json is not None:
+                log_string = log_from_json
+            else:
+                replay_log_url = f"https://replay.pokemonshowdown.com/{self.match_record.format.name}-{self.match_record.showdown_id}.log"
+                replay_log_response = requests.get(replay_log_url)
+                if replay_log_response.status_code != 200:
+                    raise Exception(f"Something went wrong with web request: {replay_log_url}")
+                log_string = replay_log_response.text
 
         self.log_lines = log_string.splitlines()
 
@@ -61,7 +64,7 @@ class ShowdownMatchParser:
             if throw_if_exists:
                 raise AlreadyExistsException(f"Match ID {match_json['id']} already exists")
 
-        return cls(match_record, wait, local)
+        return cls(match_record, wait, local, log_from_json=match_json['log'] if 'log' in match_json else None)
 
 
     def clean_and_split_line(self, line):

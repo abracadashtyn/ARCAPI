@@ -2,10 +2,12 @@ import os
 
 import redis
 from flask import Flask
-from flask_sqlalchemy import SQLAlchemy
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from flask_migrate import Migrate
-from config.shared import Config
+from flask_sqlalchemy import SQLAlchemy
 
+from config.shared import Config
 
 db = SQLAlchemy()
 migrate = Migrate()
@@ -15,6 +17,8 @@ redis_cache = redis.Redis(
     decode_responses=True,
     socket_connect_timeout=5
 )
+limiter = Limiter(get_remote_address, storage_uri="redis://localhost:6379")
+
 
 def create_app(config_class=None):
     app = Flask(__name__)
@@ -43,6 +47,7 @@ def create_app(config_class=None):
 
     db.init_app(app)
     migrate.init_app(app, db)
+    limiter.init_app(app)
 
     from app.models import bp as models_bp
     app.register_blueprint(models_bp)
@@ -62,5 +67,8 @@ def create_app(config_class=None):
     os.makedirs(app.config['ITEM_IMAGES_DIR'], exist_ok=True)
     os.makedirs(app.config['TYPE_IMAGES_DIR'], exist_ok=True)
     os.makedirs(app.config['TERA_TYPE_IMAGES_DIR'], exist_ok=True)
+
+    # don't include top line message with error responses by default.
+    app.config['ERROR_INCLUDE_MESSAGE'] = False
 
     return app

@@ -1,14 +1,17 @@
 import json
 import logging
 from datetime import datetime, timedelta
+from json import JSONDecodeError
+from urllib.parse import urlsplit, urljoin
 
+import requests
 from flask import request, current_app
 from flask_restx import Namespace, fields, Resource
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import selectinload
 
-from app import db, redis_cache
+from app import db, redis_cache, limiter
 from app.api.v1 import api_v1
 from app.api.v1.abilities_namespace import ability_model
 from app.api.v1.errors import APIError, error_response, NotFoundError, ValidationError
@@ -19,7 +22,9 @@ from app.api.v1.pagination import pagination_model
 from app.api.v1.players_namespace import player_model
 from app.api.v1.pokemon_namespace import pokemon_model, pokemon_base_species_model
 from app.api.v1.types_namespace import pokemon_type_model
-from app.models import Match, PlayerMatch, Pokemon
+from app.exceptions import AlreadyExistsException
+from app.models import Match, PlayerMatch, Pokemon, Format
+from app.tasks.showdown_match_parser import ShowdownMatchParser
 
 matches_ns = Namespace('Matches', description='Operations related to matches')
 api_v1.add_namespace(matches_ns, path='/matches')
@@ -74,6 +79,70 @@ best_matches_response = api_v1.model('BestMatchesResponse', {
 match_list_response = api_v1.inherit('MatchListResponse', best_matches_response, {
     'pagination': fields.Nested(pagination_model)
 })
+add_match_request = api_v1.model('AddMatchRequest', {
+    'replay_url': fields.String
+})
+# models and response construction method below are used in both the MatchDetail methods and the post method of
+# MatchList, to return data on the newly created match.
+pokemon_instance_model = api_v1.inherit("PokemonInstance", pokemon_model, {
+    'ability': fields.Nested(ability_model),
+    'item': fields.Nested(item_model),
+    'tera_type': fields.Nested(pokemon_type_model),
+    'moves': fields.List(fields.Nested(move_model))
+})
+player_match_detail_model = api_v1.inherit("PlayerMatchDetails", player_model, {
+    'is_winner': fields.Boolean(example=True),
+    'team': fields.List(fields.Nested(pokemon_instance_model)),
+})
+match_detail_response = api_v1.model('MatchDetailResponse', {
+    'success': fields.Boolean(example=True),
+    'data': fields.List(fields.Nested(api_v1.inherit('MatchDetails', base_match_model, {
+        'players': fields.List(fields.Nested(player_match_detail_model)),
+        'set_matches': fields.List(fields.Nested(api_v1.model('SetMatchOverview', {
+            'id': fields.Integer(Example=43809),
+            'showdown_id': fields.String(example="gen9vgc2026regibo3-2565555555"),
+            'position_in_set': fields.Integer(example=1),
+        }))),
+    })))
+})
+def construct_match_detail_response(match_record):
+    response = {
+        'success': True,
+        'data': match_record.to_dict()
+    }
+    response['data']['players'] = []
+    for player_match in match_record.players:
+        response['data']['players'].append({
+            'id': player_match.player_id,
+            'won_match': player_match.won_match,
+            'name': player_match.player.name,
+            'team': [{
+                'id': x.pokemon_id,
+                'image_url': x.pokemon.get_image_url(),
+                'pokedex_number': x.pokemon.pokedex_number,
+                'name': x.pokemon.name,
+                'tier': x.pokemon.tier,
+                'types': [y.to_dict() for y in x.pokemon.types],
+                'tera_type': x.tera_type.to_dict(is_tera=True) if x.tera_type else None,
+                'base_species': x.pokemon.base_species.to_dict() if x.pokemon.base_species else None,
+                'ability': x.ability.to_dict() if x.ability else None,
+                'item': x.item.to_dict() if x.item else None,
+                'moves': [y.to_dict() for y in (x.move_1, x.move_2, x.move_3, x.move_4) if y is not None]
+            } for x in player_match.pokemon]
+        })
+
+    response['data']['set_matches'] = []
+    if match_record.set_id is not None:
+        set_matches = Match.query.filter(Match.set_id == match_record.set_id).all()
+        for set_match in set_matches:
+            response['data']['set_matches'].append({
+                'id': set_match.id,
+                'showdown_id': set_match.get_showdown_url_string(),
+                'position_in_set': set_match.position_in_set,
+            })
+    return response
+
+
 """Fetches a list of all matches"""
 @matches_ns.route('/')
 class MatchList(Resource):
@@ -130,28 +199,66 @@ class MatchList(Resource):
         except SQLAlchemyError as e:
             raise APIError(f'Error querying database for matches: {e}', code='DB_ERROR', status=500)
 
+    @matches_ns.doc('add_match')
+    @limiter.limit("10 per minute")
+    @matches_ns.expect(add_match_request, validate=True)
+    @matches_ns.response(500, 'Internal server error', error_response)
+    @matches_ns.marshal_with(match_detail_response, code=200)
+    def post(self):
+        request_data = api_v1.payload
+        replay_url = request_data['replay_url']
+        if not replay_url.startswith('http'):
+            replay_url = 'https://' + replay_url
+        try:
+            url_parts = urlsplit(replay_url)
+            if url_parts.netloc != 'replay.pokemonshowdown.com':
+                raise APIError(f"Only replays hosted by Pokemon Showdown (replay.pokemonshowdown.com) are supported",
+                               code='INVALID_URL', status=400)
+            if url_parts.path is None or url_parts.path == '':
+                raise APIError(f"URL provided is not a valid replay URL", code='INVALID_URL', status=400)
 
-pokemon_instance_model = api_v1.inherit("PokemonInstance", pokemon_model, {
-    'ability': fields.Nested(ability_model),
-    'item': fields.Nested(item_model),
-    'tera_type': fields.Nested(pokemon_type_model),
-    'moves': fields.List(fields.Nested(move_model))
-})
-player_match_detail_model = api_v1.inherit("PlayerMatchDetails", player_model, {
-    'is_winner': fields.Boolean(example=True),
-    'team': fields.List(fields.Nested(pokemon_instance_model)),
-})
-match_detail_response = api_v1.model('MatchDetailResponse', {
-    'success': fields.Boolean(example=True),
-    'data': fields.List(fields.Nested(api_v1.inherit('MatchDetails', base_match_model, {
-        'players': fields.List(fields.Nested(player_match_detail_model)),
-        'set_matches': fields.List(fields.Nested(api_v1.model('SetMatchOverview', {
-            'id': fields.Integer(Example=43809),
-            'showdown_id': fields.String(example="gen9vgc2026regibo3-2565555555"),
-            'position_in_set': fields.Integer(example=1),
-        }))),
-    })))
-})
+            if url_parts.path.endswith('.log'):
+                replay_url = urljoin(replay_url, url_parts.path.replace('.log', '.json'))
+            elif url_parts.path.endswith('.json'):
+                pass
+            else:
+                replay_url = urljoin(replay_url, url_parts.path + '.json')
+
+            replay_response = requests.get(replay_url, timeout=10)
+            if not replay_response.ok:
+                raise APIError(f'Error querying replay from showdown: {replay_response.reason}', code=replay_response.reason, status=replay_response.status_code)
+
+            replay_json = replay_response.json()
+            format_name = replay_json['formatid'] if 'formatid' in replay_json \
+                else replay_json['id'].split('-')[0] if 'id' in replay_json else None
+
+            format_record = Format.query.filter_by(name=format_name).one_or_none()
+            if format_record is None:
+                raise APIError(f"The game format for this match ({format_name}) is not currently supported.",
+                               code='UNSUPPORTED', status=400)
+
+            match_parser = ShowdownMatchParser.construct_from_json(replay_json, format_record.id, wait=True,
+                                                                   throw_if_exists=True)
+            match_parser.parse_log_details()
+            return construct_match_detail_response(match_parser.match_record)
+
+
+        # can be thrown when getting json from showdown API, if response is not valid json
+        except JSONDecodeError as e:
+            raise APIError(f"Error decoding json response from showdown url {replay_url}: {e.msg}",
+                           code='INVALID_JSON', status=500)
+
+        except ValueError:
+            raise APIError(f"Error parsing replay URL: {replay_url}", code='INVALID_URL', status=500)
+
+        # thrown by ShowdownMatchParser.construct_from_json if the requested match already exists. If it does, just
+        # return the data we have on it instead of throwing an error.
+        except AlreadyExistsException:
+            match_record = (Match.query
+                            .filter(Match.showdown_id==replay_json['id'].split('-')[1])
+                            .filter(Match.format_id == format_record.id).one_or_none())
+            return construct_match_detail_response(match_record)
+
 """ Fetches details for a specific match """
 @matches_ns.route('/<int:match_id>')
 class MatchDetail(Resource):
@@ -169,41 +276,7 @@ class MatchDetail(Resource):
         if match_record is None:
             raise NotFoundError(f'Match with ID {match_id} not found')
 
-        response = {
-            'success': True,
-            'data': match_record.to_dict()
-        }
-        response['data']['players'] = []
-        for player_match in match_record.players:
-            response['data']['players'].append({
-                'id': player_match.player_id,
-                'won_match': player_match.won_match,
-                'name': player_match.player.name,
-                'team': [{
-                    'id': x.pokemon_id,
-                    'image_url': x.pokemon.get_image_url(),
-                    'pokedex_number': x.pokemon.pokedex_number,
-                    'name': x.pokemon.name,
-                    'tier': x.pokemon.tier,
-                    'types': [y.to_dict() for y in x.pokemon.types],
-                    'tera_type': x.tera_type.to_dict(is_tera=True) if x.tera_type else None,
-                    'base_species': x.pokemon.base_species.to_dict() if x.pokemon.base_species else None,
-                    'ability': x.ability.to_dict() if x.ability else None,
-                    'item': x.item.to_dict() if x.item else None,
-                    'moves': [y.to_dict() for y in (x.move_1, x.move_2, x.move_3, x.move_4) if y is not None]
-                } for x in player_match.pokemon]
-            })
-
-        response['data']['set_matches'] = []
-        if match_record.set_id is not None:
-            set_matches = Match.query.filter(Match.set_id == match_record.set_id).all()
-            for set_match in set_matches:
-                response['data']['set_matches'].append({
-                    'id': set_match.id,
-                    'showdown_id': set_match.get_showdown_url_string(),
-                    'position_in_set': set_match.position_in_set,
-                })
-        return response
+        return construct_match_detail_response(match_record)
 
 
 search_pokemon_request_model = api_v1.model('SearchPokemonModel', {
