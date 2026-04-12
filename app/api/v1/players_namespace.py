@@ -114,7 +114,7 @@ class PlayerDetail(Resource):
         if 'format_id' in request.args:
             base_match_query = base_match_query.filter(Match.format_id == request.args['format_id'])
 
-        top_rating = base_match_query.order_by(Match.rating.desc()).first()
+        top_rating = base_match_query.filter(PlayerMatch.won_match == True).order_by(Match.rating.desc()).first()
         most_recent_rating = base_match_query.order_by(Match.upload_time.desc()).first()
         if top_rating is not None:
             response_data['top_rated_match'] = {
