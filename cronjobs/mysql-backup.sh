@@ -1,5 +1,5 @@
 # Config
-DB_USER="root"
+DB_USER="replaygenieagent"
 DB_HOST="localhost"
 DATABASES="replaygenie"
 BACKUP_DIR="/backups/mysql"
@@ -44,6 +44,7 @@ run_dump() {
     filename="all-databases_${TIMESTAMP}.sql.gz"
     log "Dumping ALL databases → $filename"
     mysqldump $MYSQL_OPTS \
+      --no-tablespaces \
       --all-databases \
       --single-transaction \
       --routines \
@@ -54,6 +55,7 @@ run_dump() {
     filename="${db}_${TIMESTAMP}.sql.gz"
     log "Dumping database '$db' → $filename"
     mysqldump $MYSQL_OPTS \
+      --no-tablespaces \
       --databases "$db" \
       --single-transaction \
       --routines \
