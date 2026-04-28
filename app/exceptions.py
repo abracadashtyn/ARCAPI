@@ -5,3 +5,7 @@ class AlreadyExistsException(Exception):
 class CustomGameException(Exception):
     """Raised when a match's game format is custom and so the detail log does not match the expected format"""
     pass
+
+class GameLogParseException(Exception):
+    """Generic class of exception raised when something goes wrong parsing the showdown log for a game"""
+    pass

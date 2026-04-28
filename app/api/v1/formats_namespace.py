@@ -20,6 +20,10 @@ format_model = api_v1.model('Format', {
     'id': fields.Integer(example=2),
     'name': fields.String(example="gen9vgc2026regibo3"),
     'formatted_name': fields.String(example="[Gen 9] VGC 2026 Reg I (Bo3)"),
+    'is_historic': fields.Boolean(example=False),
+    'is_open_teamsheet': fields.Boolean(example=True),
+    'is_official': fields.Boolean(example=True),
+    'has_series': fields.Boolean(example=True),
 })
 format_list_response = api_v1.model('FormatListResponse', {
     'success': fields.Boolean(example=True),

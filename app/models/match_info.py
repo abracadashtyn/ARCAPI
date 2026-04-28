@@ -11,6 +11,8 @@ class Format(db.Model):
     formatted_name: so.Mapped[Optional[str]] = so.mapped_column(sa.String(100))
     is_historic: so.Mapped[Optional[bool]] = so.mapped_column(sa.Boolean)
     is_open_teamsheet: so.Mapped[Optional[bool]] = so.mapped_column(sa.Boolean)
+    is_official: so.Mapped[Optional[bool]] = so.mapped_column(sa.Boolean)
+    has_series: so.Mapped[Optional[bool]] = so.mapped_column(sa.Boolean)
 
     matches: so.Mapped[List['Match']] = so.relationship(back_populates='format')
 
@@ -24,6 +26,8 @@ class Format(db.Model):
             'formatted_name': self.formatted_name,
             'is_historic': self.is_historic,
             'is_open_teamsheet': self.is_open_teamsheet,
+            'is_official': self.is_official,
+            'has_series': self.has_series,
         }
 
     @classmethod

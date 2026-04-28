@@ -70,8 +70,8 @@ best_matches_response = api_v1.model('BestMatchesResponse', {
         'players': fields.List(fields.Nested(api_v1.inherit("PlayerMatchDetails", player_model, {
             'is_winner': fields.Boolean(example=True),
             'team': fields.List(fields.Nested(api_v1.inherit('BasePokemon', pokemon_base_species_model, {
-                'item': fields.Nested(item_model),
-                'tera_type': fields.Nested(pokemon_type_model)
+                'item': fields.Nested(item_model, allow_null=True),
+                'tera_type': fields.Nested(pokemon_type_model, allow_null=True)
             }))),
         }))),
     })))
@@ -85,9 +85,9 @@ add_match_request = api_v1.model('AddMatchRequest', {
 # models and response construction method below are used in both the MatchDetail methods and the post method of
 # MatchList, to return data on the newly created match.
 pokemon_instance_model = api_v1.inherit("PokemonInstance", pokemon_model, {
-    'ability': fields.Nested(ability_model),
-    'item': fields.Nested(item_model),
-    'tera_type': fields.Nested(pokemon_type_model),
+    'ability': fields.Nested(ability_model, allow_null=True),
+    'item': fields.Nested(item_model, allow_null=True),
+    'tera_type': fields.Nested(pokemon_type_model, allow_null=True),
     'moves': fields.List(fields.Nested(move_model))
 })
 player_match_detail_model = api_v1.inherit("PlayerMatchDetails", player_model, {

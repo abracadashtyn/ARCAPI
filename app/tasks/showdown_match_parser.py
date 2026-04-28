@@ -7,7 +7,7 @@ import requests
 from flask import current_app
 
 from app import db
-from app.exceptions import AlreadyExistsException, CustomGameException
+from app.exceptions import AlreadyExistsException, CustomGameException, GameLogParseException
 from app.models import Match, Format, Player, PlayerMatch, Pokemon, PokemonType, PlayerMatchPokemon, Item, Ability, Move
 
 
@@ -74,8 +74,9 @@ class ShowdownMatchParser:
         # Inserts a space before any capital letter that is not at the start of the string
         return re.sub(r'(?<!^)([A-Z])', r' \1', string)
 
-    def parse_log_details(self, local=False):
-        self.parse_sequence_in_set()
+    def parse_log_details(self):
+        if self.match_record.format.has_series:
+            self.parse_sequence_in_set()
         self.parse_players()
         self.parse_pokemon()
 
@@ -139,101 +140,158 @@ class ShowdownMatchParser:
         db.session.commit()
 
     def parse_pokemon(self):
-        teams = [x for x in self.log_lines if x.startswith("|showteam|")]
-        if len(teams) != 2:
-            raise CustomGameException(f"There should be two 'showteam' records, one for each player,"
-                                      f" but {len(teams)} were found in the log data.")
+        # look for the |showteam| clause in the game log for matches of open teamsheet format - this has info on a
+        # pokemon's moveset, held items, etc. If these lines aren't present in a match log for an open teamsheet format,
+        # this means the game is custom and we just discard it.
+        if self.match_record.format.is_open_teamsheet:
+            logging.info(f"Parsing team using open teamsheet formatting")
+            teams = [x for x in self.log_lines if x.startswith("|showteam|")]
+            if len(teams) != 2:
+                raise CustomGameException(f"There should be two 'showteam' records, one for each player,"
+                                          f" but {len(teams)} were found in the log data.")
 
-        for team in teams:
-            team_info = re.search('\|showteam\|(p[1,2])\|(.*)', team)
-            if team_info.group(1) == 'p1':
-                pm_record_id = self.player_1_match_record.id    #p1_match_record_id
-            elif team_info.group(1) == 'p2':
-                pm_record_id = self.player_2_match_record.id    #p2_match_record_id
-            else:
-                raise Exception(f"Not able to determine which player team record belongs to. Please check data format.")
+            for team in teams:
+                team_info = re.search('\|showteam\|(p[1,2])\|(.*)', team)
+                if team_info.group(1) == 'p1':
+                    pm_record_id = self.player_1_match_record.id
+                elif team_info.group(1) == 'p2':
+                    pm_record_id = self.player_2_match_record.id
+                else:
+                    raise Exception(f"Not able to determine which player team record belongs to. Please check data format.")
 
-            for pokemon_data in team_info.group(2).split(']'):
-                '''
-                will always be of format <pokemon_name>||<item>|<ability>|<moveset>|||<gender>|||<level>|,,,,,<tera_type>
-                when split on |, 
-                    [0]='<pokemon_name>'
-                    [1]=''
-                    [2]='<item>'
-                    [3]='<ability>'
-                    [4]='<moveset>'
-                    [5]=''
-                    [6]=''
-                    [7]='<gender>'
-                    [8]=''
-                    [9]=''
-                    [10]='<level>'
-                    [11]=',,,,,<tera_type>]'
+                for pokemon_data in team_info.group(2).split(']'):
+                    '''
+                    will always be of format <pokemon_name>||<item>|<ability>|<moveset>|||<gender>|||<level>|,,,,,<tera_type>
+                    when split on |, 
+                        [0]='<pokemon_name>'
+                        [1]=''
+                        [2]='<item>'
+                        [3]='<ability>'
+                        [4]='<moveset>'
+                        [5]=''
+                        [6]=''
+                        [7]='<gender>'
+                        [8]=''
+                        [9]=''
+                        [10]='<level>'
+                        [11]=',,,,,<tera_type>]'
+    
+                    I'm unsure if the blank fields will ever be populated, or if that's simply formatting.
+                    TODO no documentation on this - dig through the code to find out? 
+                    for now raise an exception if any one of these fields is non-null to manually check the data
+                    '''
+                    pkmn_info = [x for x in pokemon_data.split('|')]
 
-                I'm unsure if the blank fields will ever be populated, or if that's simply formatting.
-                TODO no documentation on this - dig through the code to find out? 
-                for now raise an exception if any one of these fields is non-null to manually check the data
-                '''
-                pkmn_info = [x for x in pokemon_data.split('|')]
+                    if len(pkmn_info) != 12:
+                        raise Exception(f"did not parse the expected 12 fields for pokemon team member: {pkmn_info}")
 
-                if len(pkmn_info) != 12:
-                    raise Exception(f"did not parse the expected 12 fields for pokemon team member: {pkmn_info}")
+                    if any(True for x in [1, 5, 6, 8, 9] if pkmn_info[x] != ""):
+                        raise Exception(f"One of the pokemon match info fields expected to be empty is not: {pkmn_info}")
 
-                if any(True for x in [1, 5, 6, 8, 9] if pkmn_info[x] != ""):
-                    raise Exception(f"One of the pokemon match info fields expected to be empty is not: {pkmn_info}")
+                    # name field
+                    pokemon_record = Pokemon.query.filter_by(name=pkmn_info[0]).first()
 
-                # name field
-                pokemon_record = Pokemon.query.filter_by(name=pkmn_info[0]).first()
+                    # if this is a new pokemon record, we also need to add its types from the last field in the log.
+                    # in theory we should never hit this
+                    if pokemon_record is None:
+                        pokemon_record = Pokemon(name=pkmn_info[0])
+                        print("THIS IS A PREVIOUSLY UNSEEN POKEMON!! check if this works ")
+                        db.session.add(pokemon_record)
+                        db.session.commit()
+                        types = [x for x in pkmn_info[-1].split(',') if x != ""]
+                        for type in types:
+                            pokemon_record.types.append(PokemonType.get_or_create(type))
+                        db.session.commit()
 
-                # if this is a new pokemon record, we also need to add its types from the last field in the log.
-                # in theory we should never hit this
-                if pokemon_record is None:
-                    pokemon_record = Pokemon(name=pkmn_info[0])
-                    print("THIS IS A PREVIOUSLY UNSEEN POKEMON!! check if this works ")
-                    db.session.add(pokemon_record)
-                    db.session.commit()
-                    types = [x for x in pkmn_info[-1].split(',') if x != ""]
-                    for type in types:
-                        pokemon_record.types.append(PokemonType.get_or_create(type))
-                    db.session.commit()
+                    pmp_record = PlayerMatchPokemon.get_or_create(pm_record_id, pokemon_record.id)
 
-                pmp_record = PlayerMatchPokemon.get_or_create(pm_record_id, pokemon_record.id)
+                    # [2] = item the pokemon is holding
+                    if pkmn_info[2] != "":
+                        pmp_record.item = Item.get_or_create(self.camel_case_to_spaced(pkmn_info[2]))
 
-                # [2] = item the pokemon is holding
-                if pkmn_info[2] != "":
-                    pmp_record.item = Item.get_or_create(self.camel_case_to_spaced(pkmn_info[2]))
+                    # [3] = ability
+                    if pkmn_info[3] != "":
+                        pmp_record.ability = Ability.get_or_create(self.camel_case_to_spaced(pkmn_info[3]))
 
-                # [3] = ability
-                if pkmn_info[3] != "":
-                    pmp_record.ability = Ability.get_or_create(self.camel_case_to_spaced(pkmn_info[3]))
+                    # [4] = moveset. Should always be present so raise exception if this field is blank.
+                    if pkmn_info[4] == "":
+                        raise Exception(f"Moveset is null, which should not happen!")
 
-                # [4] = moveset. Should always be present so raise exception if this field is blank.
-                if pkmn_info[4] == "":
-                    raise Exception(f"Moveset is null, which should not happen!")
+                    moves = pkmn_info[4].split(',')
+                    move_ids = []
+                    for move in moves:
+                        move_record = Move.get_or_create(self.camel_case_to_spaced(move))
+                        move_ids.append(move_record.id)
 
-                moves = pkmn_info[4].split(',')
-                move_ids = []
-                for move in moves:
-                    move_record = Move.get_or_create(self.camel_case_to_spaced(move))
-                    move_ids.append(move_record.id)
-
-                pmp_record.move_1_id = move_ids[0] if len(move_ids) >= 1 else None
-                pmp_record.move_2_id = move_ids[1] if len(move_ids) >= 2 else None
-                pmp_record.move_3_id = move_ids[2] if len(move_ids) >= 3 else None
-                pmp_record.move_4_id = move_ids[3] if len(move_ids) >= 4 else None
+                    pmp_record.move_1_id = move_ids[0] if len(move_ids) >= 1 else None
+                    pmp_record.move_2_id = move_ids[1] if len(move_ids) >= 2 else None
+                    pmp_record.move_3_id = move_ids[2] if len(move_ids) >= 3 else None
+                    pmp_record.move_4_id = move_ids[3] if len(move_ids) >= 4 else None
 
 
-                # [11]=',,,,,<tera_type>]'
-                if pkmn_info[11] != "":
-                    tera_type_name = pkmn_info[11].lstrip(',').rstrip(']')
-                    tera_type_record = PokemonType.query.filter(PokemonType.name == tera_type_name).first()
+                    # [11]=',,,,,<tera_type>]'
+                    if pkmn_info[11] != "":
+                        tera_type_name = pkmn_info[11].lstrip(',').rstrip(']')
+                        tera_type_record = PokemonType.query.filter(PokemonType.name == tera_type_name).first()
 
-                    # all pokemon types are already in table and rarely change. If a tera type is found that does not
-                    # already exist in the db, it's more likely the formatting of the log has changed than that this is
-                    # actually a new pokemon type. Raise an exception in this case/
-                    if tera_type_record is None:
-                        raise Exception(f"Could not find tera type '{tera_type_name}'")
+                        # all pokemon types are already in table and rarely change. If a tera type is found that does not
+                        # already exist in the db, it's more likely the formatting of the log has changed than that this is
+                        # actually a new pokemon type. Raise an exception in this case/
+                        if tera_type_record is None:
+                            raise Exception(f"Could not find tera type '{tera_type_name}'")
 
-                    pmp_record.tera_type = tera_type_record
+                        pmp_record.tera_type = tera_type_record
 
                 db.session.commit()
+
+        else:
+            # closed teamsheets differs from the above in that only the pokemon themselves are included in the game log,
+            # no data on moveset, held items, or abilities is included. Some info can be parsed if the move, item, or
+            # ability is used from the turn log, but nothing is guaranteed to be present.
+            logging.info(f"Parsing team sheet using closed teamsheet formatting.")
+            p1_team = []
+            p2_team = []
+            poke_lines = [x for x in self.log_lines if x.startswith("|poke|")]
+            for line in poke_lines:
+
+                line_parts = line.split('|')
+                pokemon_name = line_parts[3].split(',')[0]
+                if pokemon_name.endswith("-*"):
+                    pokemon_name = pokemon_name[:-2]
+                    print(f"removed wildcard from pokemon name to get base name {pokemon_name}")
+
+                print(line_parts)
+
+                if line_parts[1] != 'poke':
+                    raise GameLogParseException(f"Error parsing team log line '{line}'. Part 0 when split on '|' should "
+                                                f"be 'poke' but is '{line_parts[0]}'")
+
+                # assign to a player or throw
+                if line_parts[2] == 'p1':
+                    p1_team.append(pokemon_name)
+                elif line_parts[2] == 'p2':
+                    p2_team.append(pokemon_name)
+                else:
+                    raise GameLogParseException(f"Error parsing team log line '{line}'. Team member not assignable to "
+                                                f"either p1 or p2!")
+
+            if len(p1_team) <= 4:
+                raise GameLogParseException(f"Did not find enough pokemon to make up valid team for p1! "
+                                            f"\np1 team: {p1_team}\np2 team: {p2_team}")
+            elif len(p2_team) <= 4:
+                raise GameLogParseException(f"Did not find enough pokemon to make up a valid team for p2! "
+                                            f"\np1 team: {p1_team}\np2 team: {p2_team}")
+
+            for pokemon_name in p1_team:
+                pokemon_record = Pokemon.query.filter_by(name=pokemon_name).first()
+                if pokemon_record is None:
+                    raise GameLogParseException(f"Could not find record for pokemon with name '{pokemon_name}'.")
+                pmp_record = PlayerMatchPokemon.get_or_create(self.player_1_match_record.id, pokemon_record.id)
+                # TODO eventually try to attribute moves, abilities, held items from turn log
+
+            for pokemon_name in p2_team:
+                pokemon_record = Pokemon.query.filter_by(name=pokemon_name).first()
+                if pokemon_record is None:
+                    raise GameLogParseException(f"Could not find record for pokemon with name '{pokemon_name}'.")
+                pmp_record = PlayerMatchPokemon.get_or_create(self.player_2_match_record.id, pokemon_record.id)
+                # TODO eventually try to attribute moves, abilities, held items from turn log

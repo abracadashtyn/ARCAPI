@@ -2,6 +2,8 @@ import json
 import logging
 import os
 import time
+import urllib
+
 import click
 import requests
 from flask import current_app
@@ -371,3 +373,29 @@ def rerun_failed():
         else:
             click.echo(f"All jobs successfully reran! Deleting error file.")
             os.remove(os.path.join(error_files_dir, error_file))
+
+
+@showdown.command('scrape-one')
+@click.pass_context
+@click.option('--showdown_id', '-i', type=str, help='the showdown id consisting of <format>-<match_identifier>')
+def scrape_one(ctx, showdown_id):
+    base_url = "https://replay.pokemonshowdown.com/"
+    request_url = urllib.parse.urljoin(base_url, f'{showdown_id}.json')
+    click.echo(f"Requesting from '{request_url}'")
+    response = requests.get(request_url)
+
+    if not response.ok:
+        click.echo(f"Something went wrong requesting match data from showdown: ERROR {response.status_code} "
+                   f"{response.reason} {response.text}")
+        exit(1)
+
+    match_json = response.json()
+    try:
+        match_format = Format.query.filter(Format.name == match_json['formatid']).one_or_none()
+    except KeyError:
+        click.echo(f"could not find format in match_json response {match_json}")
+        exit(1)
+
+    click.echo(f"Processing match {match_json['id']}")
+    match_parser = ShowdownMatchParser.construct_from_json(match_json, match_format.id, wait=True, throw_if_exists=False)
+    match_parser.parse_log_details()
