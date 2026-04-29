@@ -8,7 +8,7 @@ from flask import current_app
 
 from app import db
 from app.exceptions import AlreadyExistsException, CustomGameException, GameLogParseException
-from app.models import Match, Format, Player, PlayerMatch, Pokemon, PokemonType, PlayerMatchPokemon, Item, Ability, Move
+from app.models import Match, Player, PlayerMatch, Pokemon, PokemonType, PlayerMatchPokemon, Item, Ability, Move
 
 
 class ShowdownMatchParser:
@@ -258,9 +258,7 @@ class ShowdownMatchParser:
                 pokemon_name = line_parts[3].split(',')[0]
                 if pokemon_name.endswith("-*"):
                     pokemon_name = pokemon_name[:-2]
-                    print(f"removed wildcard from pokemon name to get base name {pokemon_name}")
-
-                print(line_parts)
+                    print(f"removed wildcard from pokemon name '{line_parts[3]}' to get base name '{pokemon_name}'")
 
                 if line_parts[1] != 'poke':
                     raise GameLogParseException(f"Error parsing team log line '{line}'. Part 0 when split on '|' should "
@@ -275,10 +273,10 @@ class ShowdownMatchParser:
                     raise GameLogParseException(f"Error parsing team log line '{line}'. Team member not assignable to "
                                                 f"either p1 or p2!")
 
-            if len(p1_team) <= 4:
+            if len(p1_team) < 4:
                 raise GameLogParseException(f"Did not find enough pokemon to make up valid team for p1! "
                                             f"\np1 team: {p1_team}\np2 team: {p2_team}")
-            elif len(p2_team) <= 4:
+            elif len(p2_team) < 4:
                 raise GameLogParseException(f"Did not find enough pokemon to make up a valid team for p2! "
                                             f"\np1 team: {p1_team}\np2 team: {p2_team}")
 
