@@ -56,9 +56,10 @@ def echo_keys():
             return
 
 @cacheops.command('warm')
+@click.pass_context
 @click.option('--format_id', '-f', type=int)
 @click.option('--api_version', '-v', type=int, default=1, help="Version of the API to warm the cache for.")
-def warm(format_id, api_version):
+def warm(ctx, format_id, api_version):
     if api_version == 0:
         click.echo("WARNING: api v0 is deprecated. No cache is maintained for these endpoints any longer.")
         delete_keys("*:v0:*")
@@ -67,17 +68,8 @@ def warm(format_id, api_version):
     if format_id is None:
         format_id = current_app.config.get('CURRENT_FORMAT_ID')
     
-    #delete old format key
-    if api_version == 1:
-        format_cache_keys = [
-            f"format_stats:v1:{format_id}",
-            f"format_pokemon_stats:v1:{format_id}",
-        ]
-        redis_cache.delete(*format_cache_keys)
-        click.echo(f"Deleted old format keys {format_cache_keys}")
-    else:
-        delete_keys(f"format_stats:v0:{format_id}:*")
-        click.echo(f"Deleted old format keys.")
+    #delete old format keys
+    ctx.invoke(clear_format)
 
     # recreate cache for format endpoint. If this format is the current one, cache 50 pokemon. Will only cache 10
     # for non-current pokemon as less people will be looking for that data.

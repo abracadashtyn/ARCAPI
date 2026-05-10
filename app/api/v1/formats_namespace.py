@@ -1,3 +1,4 @@
+import datetime
 import json
 import logging
 
@@ -66,12 +67,23 @@ class FormatDetail(Resource):
     @format_ns.doc('get_format')
     @format_ns.param('top_pokemon_count', type='integer',
                      description='The number of top pokemon to include in the response')
+    @format_ns.param('lookback', type='str', enum=['all', 'week', 'day', '30days'], default='all')
     @format_ns.response(404, 'Format not found', error_response)
     @format_ns.response(500, 'Internal server error', error_response)
     def get(self, format_id):
+        # calculate the period of time to look for matches in this format
+        lookback = request.args.get('lookback', 'all', type=str)
+        lookback_time = None
+        if lookback == 'day':
+            lookback_time = datetime.datetime.now() - datetime.timedelta(days=1)
+        elif lookback == 'week':
+            lookback_time = datetime.datetime.now() - datetime.timedelta(days=7)
+        elif lookback == '30days':
+            lookback_time = datetime.datetime.now() - datetime.timedelta(days=30)
+
         # cache is split between format data itself and pokemon data. First, check if format data is present and if not,
         # calculate it
-        format_cache_key = f"format_stats:v1:{format_id}"
+        format_cache_key = f"format_stats:v1:{format_id}:{lookback}"
         response = redis_cache.get(format_cache_key)
         if response is None:
             format = Format.query.get(format_id)
@@ -82,12 +94,15 @@ class FormatDetail(Resource):
                 'data': format.to_dict()
             }
             # get total count of matches in this format
-            match_count = Match.query.filter_by(format_id=format_id).count()
+            match_count_query = Match.query.filter_by(format_id=format_id)
+            if lookback_time is not None:
+                match_count_query = match_count_query.filter(Match.upload_time >= int(lookback_time.timestamp()))
+            match_count = match_count_query.count()
             response['data']['match_count'] = match_count
             response['data']['team_count'] = match_count * 2
 
         # now check if pokemon usage data is stored in the cache. If not, do a query to get counts of all pokemon used
-        top_pokemon_cache_key = f"format_pokemon_stats:v1:{format_id}"
+        top_pokemon_cache_key = f"format_pokemon_stats:v1:{format_id}:{lookback}"
         top_pokemon_list = redis_cache.get(top_pokemon_cache_key)
         if top_pokemon_list is None:
             # no cached top mons, must do search again
@@ -115,6 +130,9 @@ class FormatDetail(Resource):
             ).order_by(
                 func.count('*').desc()
             )
+            if lookback_time is not None:
+                top_pokemon_query = top_pokemon_query.filter(Match.upload_time >= int(lookback_time.timestamp()))
+
             top_pokemon_list = [(x[0], x[1]) for x in top_pokemon_query.all()]
             redis_cache.setex(top_pokemon_cache_key, 2100, json.dumps(top_pokemon_list))
             logging.info(f"Stored top pokemon list in cache with key {top_pokemon_cache_key}")
