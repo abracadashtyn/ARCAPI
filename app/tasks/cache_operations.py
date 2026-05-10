@@ -35,7 +35,7 @@ def clear():
 
 @cacheops.command('clear-pokemon')
 def clear_pokemon():
-    delete_keys("pokemon_stats:v*:*:*")
+    delete_keys("pokemon_stats:v*")
 
 @cacheops.command('clear-format')
 def clear_format():
@@ -88,10 +88,8 @@ def warm(ctx, format_id, api_version):
             for pokemon in format_detail['data']['top_pokemon']:
                 # delete old key
                 if pokemon['id'] in pokemon_ids:
-                    pokemon_cache_key = f"pokemon_stats:v{api_version}:{format_id}:{pokemon['id']}"
-                    redis_cache.delete(pokemon_cache_key)
+                    delete_keys(f"pokemon_stats:v{api_version}:{format_id}:{pokemon['id']}:*")
                     pokemon_ids.remove(pokemon['id'])
-                    click.echo(f"Deleted old cache key {pokemon_cache_key}")
 
                 # call endpoint to repopulate cache
                 pokemon_url = f"{current_app.config['BASE_URL']}/api/v{api_version}/pokemon/{pokemon['id']}?format_id={format_id}"
@@ -105,7 +103,7 @@ def warm(ctx, format_id, api_version):
             if len(pokemon_ids) > 0:
                 click.echo(f"Will remove outdated cache keys for pokemon with ids {pokemon_ids}")
                 for pokemon_id in pokemon_ids:
-                    redis_cache.delete(f"pokemon_stats:v{api_version}:{format_id}:{pokemon_id}")
+                    delete_keys(f"pokemon_stats:v{api_version}:{format_id}:{pokemon_id}:*")
         else:
             click.echo(f"ERROR: web request to warm cache for format {format_id} failed. "
                        f"{format_detail.status_code}: {format_detail.text}")

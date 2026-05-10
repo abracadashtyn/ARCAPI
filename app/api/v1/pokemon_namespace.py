@@ -1,6 +1,6 @@
+import datetime
 import json
 import logging
-import time
 import uuid
 from collections import Counter
 
@@ -146,6 +146,7 @@ specified via request parameter)"""
 class PokemonDetail(Resource):
     @pokemon_ns.doc('get_pokemon')
     @pokemon_ns.param('format_id', description='Format ID', type='integer')
+    @pokemon_ns.param('lookback', type='str', enum=['all', 'week', 'day', '30days'], default='all')
     @pokemon_ns.response(404, 'Pokemon not found', error_response)
     @pokemon_ns.response(500, 'Internal server error', error_response)
     @pokemon_ns.marshal_with(pokemon_detail_response, code=200)
@@ -156,8 +157,18 @@ class PokemonDetail(Resource):
         format_id = request.args.get('format_id', type=int) if 'format_id' in request.args \
             else current_app.config['CURRENT_FORMAT_ID']
 
+        # calculate the period of time to look for matches in this format
+        lookback = request.args.get('lookback', 'all', type=str)
+        lookback_time = None
+        if lookback == 'day':
+            lookback_time = datetime.datetime.now() - datetime.timedelta(days=1)
+        elif lookback == 'week':
+            lookback_time = datetime.datetime.now() - datetime.timedelta(days=7)
+        elif lookback == '30days':
+            lookback_time = datetime.datetime.now() - datetime.timedelta(days=30)
+
         # see if a cached response for this pokemon already exists, and if so, return that instead of recomputing stats
-        cache_key = f"pokemon_stats:v1:{format_id}:{pokemon_id}"
+        cache_key = f"pokemon_stats:v1:{format_id}:{pokemon_id}:{lookback}"
         cached_response = redis_cache.get(cache_key)
         if cached_response is not None:
             cached_response = json.loads(cached_response)
@@ -204,7 +215,7 @@ class PokemonDetail(Resource):
             ).all()
             pokemon_ids += [x.id for x in children]
 
-            db.session.execute(text(f"""
+            temp_table_statement = f"""
                 CREATE TEMPORARY TABLE {table_name} AS
                 SELECT 
                     pmp.id,
@@ -226,7 +237,17 @@ class PokemonDetail(Resource):
                 WHERE 
                     m.format_id = :format_id AND 
                     pmp.pokemon_id IN :pokemon_ids
-            """), {'format_id': format_id, 'pokemon_ids': tuple(pokemon_ids)})
+            """
+            temp_table_params = {
+                'table_name': table_name,
+                'format_id': format_id,
+                'pokemon_ids': tuple(pokemon_ids),
+            }
+            if lookback_time:
+                temp_table_statement += f" AND m.upload_time > :lookback"
+                temp_table_params['lookback'] = int(lookback_time.timestamp())
+
+            db.session.execute(text(temp_table_statement), temp_table_params)
 
             # find number of matches this mon appears in on at least one team
             match_count = db.session.execute(text(f"""
@@ -260,7 +281,7 @@ class PokemonDetail(Resource):
                     pmp.won_match,
                     pmp.rating
                 FROM
-                        {table_name} as pmp
+                    {table_name} as pmp
                 WHERE
                     pmp.won_match = True
                 ORDER BY
