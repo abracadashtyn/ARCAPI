@@ -1,8 +1,11 @@
 from datetime import datetime
+from typing import Optional, List
+
 import sqlalchemy as sa
 import sqlalchemy.orm as so
-from typing import Optional, List
+
 from app import db
+
 
 class Format(db.Model):
     __tablename__ = 'formats'
@@ -55,6 +58,11 @@ class Match(db.Model):
     format: so.Mapped[Format] = so.relationship(back_populates='matches')
 
     players: so.Mapped[List['PlayerMatch']] = so.relationship('PlayerMatch', back_populates='match', cascade='all, delete-orphan')
+
+    __table_args__ = (
+        sa.Index('idx_matches_format_upload', 'format_id', 'upload_time'),
+        sa.Index('idx_matches_format_rating', 'format_id', 'rating'),
+    )
 
     def __repr__(self):
         return f"<Match id:{self.id}, showdown_id:{self.format.name}-{self.showdown_id}>"
