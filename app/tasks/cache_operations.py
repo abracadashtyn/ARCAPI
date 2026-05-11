@@ -82,7 +82,7 @@ def warm(ctx, format_id, api_version):
         format_detail = requests.get(format_url)
         if format_detail.status_code == 200:
             pokemon_cache_keys = get_matching_keys(f"pokemon_stats:v{api_version}:{format_id}:*")
-            pokemon_ids = [int(x.split(':')[-1]) for x in pokemon_cache_keys]
+            pokemon_ids = [int(x.split(':')[-2]) for x in pokemon_cache_keys]
 
             format_detail = format_detail.json()
             for pokemon in format_detail['data']['top_pokemon']:
