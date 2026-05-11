@@ -1,6 +1,5 @@
 import datetime
 import json
-import logging
 import os
 import time
 import urllib
@@ -199,10 +198,22 @@ def scrape(ctx, format_id, mode, before, seen):
 
 
 @showdown.command('assign-set')
-def assign_set_id():
+@click.option('--format_id', '-f', type=int)
+def assign_set_id(format_id):
+    if format_id is None:
+        format_id = current_app.config['CURRENT_API_VERSION']
+
+    format = Format.query.get(format_id)
+    if not format:
+        click.echo(f"Error: could not find format with id {format_id}")
+        exit(1)
+    if format.has_series is False:
+        click.echo(f"Format {format.name} (id: {format.id}) does not have sets so no ids will be assigned.")
+        return
+
     set_id = db.session.query(Match.set_id).order_by(Match.set_id.desc()).first()
     set_id = set_id[0] + 1 if set_id[0] is not None else 0
-    click.echo(f"Will start incrementing set ids from {set_id}")
+    click.echo(f"Assigning sets to matches of format_id {format_id}. Will start incrementing set ids from {set_id}")
     batch_size = 100
     offset = 0
 
@@ -229,6 +240,7 @@ def assign_set_id():
                 Match.set_id.is_(None),
                 Match.position_in_set.is_not(None),
                 pm1.player_id < pm2.player_id,
+                Match.format_id == format_id
             ).group_by(
                 pm1.player_id,
                 p1.name,

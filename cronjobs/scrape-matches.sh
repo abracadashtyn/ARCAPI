@@ -37,7 +37,8 @@ echo "Duration: ${MINUTES}m ${SECONDS}s (${DURATION} seconds)"
 echo "Exit code: ${P2_EXIT_CODE}"
 echo "-----------------------------------------"
 
-/root/ReplayGenieAPI/venv/bin/flask showdown assign-set
+/root/ReplayGenieAPI/venv/bin/flask showdown assign-set -f 2
+/root/ReplayGenieAPI/venv/bin/flask showdown assign-set -f 3
 
 P3_EXIT_CODE=$?
 END_P3_TIME=$(date +%s)
