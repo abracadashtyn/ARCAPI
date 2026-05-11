@@ -1,8 +1,10 @@
+import datetime
 import json
 import logging
 import os
 import time
 import urllib
+from enum import Enum
 
 import click
 import requests
@@ -25,14 +27,37 @@ def showdown():
     pass
 
 
+class Mode(Enum):
+    all = 'all'
+    new = 'new'
+    historical = 'historical'
+
+class SeenMatchBehavior(Enum):
+    skip = 'skip'
+    reprocess = 'reprocess'
+    exit = 'e'
+
 @showdown.command('scrape')
 @click.pass_context
 @click.option('--format_id', '-f', type=int)
-@click.option('--historical', '-h', is_flag=True, default=False,
-              help='if present, scrapes all matches older than the oldest match currently in the database')
-@click.option('--all', '-a', is_flag=True, default=False,
-              help='if present, scrapes all matches, even those currently in the database')
-def scrape(ctx, format_id, historical, all):
+@click.option('--mode', '-m', type=click.Choice(Mode), default=Mode.new,
+              help="Default is 'new', which will ingest matches that are newer than the most recent match of the given "
+                   "format in the db. 'all' will ingest all matches, starting from the current time and working "
+                   "backwards. 'historical' will ingest matches that are older than the oldest match of this format "
+                   "currently in the db, unless the --before'/'-b' parameter is provided, in which case matches that "
+                   "are older than the timestamp provided will be ingested.")
+@click.option('--before', '-b', type=int, help="This parameter is only used when the mode is historical. "
+                                              "If provided, the historical ingestion will start at this point in time"
+                                              "rather than the oldest match timestamp in the database.")
+@click.option('--seen', '-s', type=click.Choice(SeenMatchBehavior),
+              help="What to do when when the ingestion process encounters a match that already exists in the database. "
+                   "'skip' will skip reprocessing matches that already have a record in the matches table, but the "
+                   "ingestion process won't be halted. 'reprocess' will run matches that already have a record through"
+                   "the match parser again, updating or adding any incomplete data. 'exit' will stop the execution of"
+                   "the ingestion process when a match that already has a record is encountered. If the mode is 'new' "
+                   "or 'historical', this parameter will default to 'exit', and if the mode is 'all, this parameter "
+                   "will default to 'skip'.")
+def scrape(ctx, format_id, mode, before, seen):
     # get the format id - default to current as specified in config if no value is provided
     format_id = current_app.config.get('CURRENT_FORMAT_ID') if format_id is None else format_id
     format = Format.query.get(format_id)
@@ -41,32 +66,62 @@ def scrape(ctx, format_id, historical, all):
         exit(1)
 
     comparison_timestamp = None
-    if historical:
-        click.echo('Scraping historical data.')
-        mode = 'historical'
-        error_file_name = f'scrape-{int(time.time())}.json'
-        earliest_match = Match.query.filter_by(format_id=format.id).order_by(Match.upload_time.asc()).first()
-        comparison_timestamp = earliest_match.upload_time
-        click.echo(f"Timestamp of earliest match is {comparison_timestamp}. Scraping matches older than this...")
 
-    elif all:
-        click.echo('Scraping everything.')
-        mode = 'all'
-        error_file_name = f'scrape-all-{int(time.time())}.json'
-        
-    else:
-        # default behavior is to scrape new
-        mode = 'new'
+    if mode == Mode.new:
         error_file_name = f'scrape-new-{int(time.time())}.json'
         last_match = Match.query.filter_by(format_id=format.id).order_by(Match.upload_time.desc()).first()
         comparison_timestamp = last_match.upload_time
-        click.echo(f"Timestamp of last match is {comparison_timestamp}. Scraping matches more recent than this...")
+
+        if seen is None:
+            seen = SeenMatchBehavior.exit
+
+        if seen != SeenMatchBehavior.exit:
+            click.echo(f"Error: when ingesting new matches, the only valid seen match behavior is to exit when an "
+                       f"existing match is encountered. To skip or reprocess seen matches, use 'all' mode instead." )
+            exit(1)
+
+        if before is not None:
+            click.echo(f"Warning: 'before' parameter is only used in historical mode. "
+                       f"Provided value {before} will be discarded.")
+
+        click.echo(f"Mode is 'new' and seen behavior is '{seen}'. The timestamp of the most recent match is "
+                   f"{comparison_timestamp} ({datetime.datetime.fromtimestamp(comparison_timestamp)}), matches newer "
+                   f"than this will be scraped.")
+
+    elif mode == Mode.all:
+        error_file_name = f'scrape-all-{int(time.time())}.json'
+        if seen is None:
+            seen = SeenMatchBehavior.skip
+
+        if before is not None:
+            click.echo(f"Warning: 'before' parameter is only used in historical mode. "
+                       f"Provided value {before} will be discarded.")
+
+        click.echo(f"Mode is 'all' and seen behavior is '{seen}'.")
+
+    elif mode == Mode.historical:
+        error_file_name = f'scrape-historical-{int(time.time())}.json'
+        if seen is None:
+            seen = SeenMatchBehavior.exit
+
+        if before is None:
+            earliest_match = Match.query.filter_by(format_id=format.id).order_by(Match.upload_time.asc()).first()
+            comparison_timestamp = earliest_match.upload_time
+        else:
+            comparison_timestamp = before
+
+        click.echo(f"Mode is 'historical' and seen behavior is '{seen}'. Will look back for matches before unix time "
+                   f"'{comparison_timestamp}' ({datetime.datetime.fromtimestamp(comparison_timestamp)})")
+    else:
+        # here as a sanity check, should never be reached.
+        click.echo(f"Error: mode '{mode}' has not been implemented.")
+        exit(1)
 
     error_file_path = os.path.join(os.getcwd(), 'app', 'tasks', 'errors', error_file_name)
 
     # query showdown api for all matches in desired format.
     params = {"format": format.name}
-    if historical:
+    if mode == Mode.historical:
         params['before'] = comparison_timestamp
 
     response = requests.get(list_replays_url, params=params)
@@ -76,26 +131,32 @@ def scrape(ctx, format_id, historical, all):
 
     matches_json = response.json()
     matches_added_count = 0
+    throw_if_exists = False if seen == SeenMatchBehavior.reprocess else True
     while len(matches_json) > 0:
         for match_json in matches_json:
-            if mode == 'new' and match_json['uploadtime'] < comparison_timestamp:
+            if mode == Mode.new and match_json['uploadtime'] < comparison_timestamp:
                 click.echo(f"Match {match_json['id']} with timestamp {match_json['uploadtime']} is older than"
                              f" {comparison_timestamp}. Match scraping is complete. Added {matches_added_count} matches "
                              f"to database.")
                 # warm cache for format and most commonly used pokemon
-                ctx.invoke(warm, format_id=format_id, api_version=1)
+                ctx.invoke(warm, format_id=format_id, api_version=current_app.config['CURRENT_API_VERSION'])
                 return
             else:
                 click.echo(f"Processing match {match_json['id']}")
                 match_parser = None
                 try:
-                    match_parser = ShowdownMatchParser.construct_from_json(match_json, format.id, wait=True,
-                                                                           throw_if_exists=True)
+                    match_parser = ShowdownMatchParser.construct_from_json(match_json, format.id, wait=True, throw_if_exists=throw_if_exists)
                     match_parser.parse_log_details()
                     matches_added_count += 1
                 except AlreadyExistsException:
-                    click.echo(f"Match {match_json['id']} already exists, skipping.")
-                    continue
+                    if seen == SeenMatchBehavior.skip:
+                        click.echo(f"Match {match_json['id']} already exists. Skipping and continuing to next...")
+                        continue
+                    elif seen == SeenMatchBehavior.exit:
+                        click.echo(f"Match {match_json['id']} already exists. Mode is 'exit' so match ingestion is done."
+                                   f" Warming cache...")
+                        ctx.invoke(warm, format_id=format_id, api_version=current_app.config['CURRENT_API_VERSION'])
+                        return
                 except CustomGameException:
                     click.echo("This is a custom game. Will delete any data populated by it and skip.")
                     if match_parser:
@@ -134,7 +195,7 @@ def scrape(ctx, format_id, historical, all):
             matches_json = []
 
     # warm cache for format and most commonly used pokemon
-    ctx.invoke(warm, format_id=format_id, api_version=1)
+    ctx.invoke(warm, format_id=format_id, api_version=current_app.config['CURRENT_API_VERSION'])
 
 
 @showdown.command('assign-set')

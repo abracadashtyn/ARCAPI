@@ -16,3 +16,4 @@ class Config(object):
     MIN_IOS_VERSION = 1
     MIN_WEB_VERSION = 1
     MIN_CATALOG_VERSION = 2
+    CURRENT_API_VERSION = 1
