@@ -79,5 +79,8 @@ class Match(db.Model):
             'position_in_set': self.position_in_set,
         }
 
+    def get_upload_datetime(self):
+        return datetime.fromtimestamp(self.upload_time).isoformat()
+
     def get_showdown_url_string(self):
         return f"{self.format.name}-{self.showdown_id}"

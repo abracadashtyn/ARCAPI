@@ -114,14 +114,17 @@ ability_frequency_model = api_v1.inherit('AbilityFrequency', ability_model, {
 teammate_frequency_model = api_v1.inherit('TeammateFrequency', pokemon_base_species_model, {
     'count': fields.Integer,
 })
-top_match_model = api_v1.model('TopMatch', {
-    'match': fields.Nested(api_v1.model('TopMatch', {
+top_players_model = api_v1.inherit('TopPlayers', player_model, {
+    'top_5_matches': fields.Nested(api_v1.model('TopMatch', {
         'id': fields.Integer(example=1),
         'showdown_id': fields.String(example="gen9vgc2026regibo3-2565555555"),
         'upload_time': fields.DateTime(example="2026-01-01T17:30:00"),
         'rating': fields.Integer(example=1000),
     })),
-    'winning_player': fields.Nested(player_model),
+    'ranked_win_count': fields.Integer(example=10),
+    'avg_rating': fields.Float(example=1367.4),
+    'max_rating': fields.Integer(example=1500),
+    'min_rating': fields.Integer(example=1000),
 })
 pokemon_detail_model = api_v1.inherit('PokemonDetail', pokemon_model, {
     'forms': fields.List(fields.Nested(pokemon_form_model)),
@@ -134,7 +137,7 @@ pokemon_detail_model = api_v1.inherit('PokemonDetail', pokemon_model, {
     'top_moves': fields.List(fields.Nested(move_frequency_model)),
     'top_abilities': fields.List(fields.Nested(ability_frequency_model)),
     'top_teammates': fields.List(fields.Nested(teammate_frequency_model)),
-    'top_matches': fields.List(fields.Nested(top_match_model)),
+    'top_players': fields.List(fields.Nested(top_players_model)),
 })
 pokemon_detail_response = api_v1.model('PokemonDetailResponse', {
     'success': fields.Boolean,
@@ -274,30 +277,50 @@ class PokemonDetail(Resource):
 
             # find the top ranked matches where this mon was on the winning team (and the associated player data for
             # the winning player)
-            top_won_matches = db.session.execute(text(f"""
+            response['data']['top_players'] = []
+            top_players = db.session.execute(text(f"""
                 SELECT 
-                    pmp.match_id,
                     pmp.player_id,
-                    pmp.won_match,
-                    pmp.rating
+                    GROUP_CONCAT(pmp.match_id ORDER BY pmp.rating DESC) as match_ids,
+                    COUNT(pmp.match_id) as ranked_win_count,
+                    avg(pmp.rating) as avg_rating,
+                    max(pmp.rating) as max_rating,
+                    min(pmp.rating) as min_rating
                 FROM
                     {table_name} as pmp
                 WHERE
                     pmp.won_match = True
-                ORDER BY
-                    pmp.rating DESC
+                    AND pmp.rating >= 1000
+                GROUP BY
+                    pmp.player_id
+                ORDER BY 
+                    MAX(pmp.rating) DESC,
+                    ranked_win_count DESC
                 LIMIT 6;
             """)).mappings().all()
 
-            response['data']['top_matches'] = []
-            for match in top_won_matches:
-                player_record = Player.query.get(match['player_id'])
-                match_record = Match.query.get(match['match_id'])
-                match_response = {
-                    'match': match_record.to_dict(),
-                    'winning_player': player_record.to_dict()
+            for player in top_players:
+                player_record = Player.query.get(player['player_id'])
+                player_response = {
+                    'id': player_record.id,
+                    'name': player_record.name,
+                    'ranked_win_count': player['ranked_win_count'],
+                    'avg_rating': float(round(player['avg_rating'], 1)),
+                    'max_rating': player['max_rating'],
+                    'min_rating': player['min_rating'],
+                    'top_5_matches': []
                 }
-                response['data']['top_matches'].append(match_response)
+                won_match_list = player['match_ids'].split(',')
+                for won_match_id in won_match_list[:5]:
+                    match_record = Match.query.get(won_match_id)
+                    player_response['top_5_matches'].append({
+                        'id': match_record.id,
+                        'showdown_id': match_record.showdown_id,
+                        'upload_time': match_record.get_upload_datetime(),
+                        'rating': match_record.rating,
+                    })
+
+                response['data']['top_players'].append(player_response)
 
             # aggregate the top 6 most common items used
             most_common_items = db.session.execute(text(f"""
