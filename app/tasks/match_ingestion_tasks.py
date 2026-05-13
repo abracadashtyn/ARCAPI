@@ -27,9 +27,8 @@ def showdown():
 
 
 class Mode(Enum):
-    all = 'all'
     new = 'new'
-    historical = 'historical'
+    backfill = 'backfill'
 
 class SeenMatchBehavior(Enum):
     skip = 'skip'
@@ -41,22 +40,20 @@ class SeenMatchBehavior(Enum):
 @click.option('--format_id', '-f', type=int)
 @click.option('--mode', '-m', type=click.Choice(Mode), default=Mode.new,
               help="Default is 'new', which will ingest matches that are newer than the most recent match of the given "
-                   "format in the db. 'all' will ingest all matches, starting from the current time and working "
-                   "backwards. 'historical' will ingest matches that are older than the oldest match of this format "
-                   "currently in the db, unless the --before'/'-b' parameter is provided, in which case matches that "
-                   "are older than the timestamp provided will be ingested.")
-@click.option('--before', '-b', type=int, help="This parameter is only used when the mode is historical. "
-                                              "If provided, the historical ingestion will start at this point in time"
-                                              "rather than the oldest match timestamp in the database.")
-@click.option('--seen', '-s', type=click.Choice(SeenMatchBehavior),
+                   "format in the db. If there are no matches in the database, it will return. 'backfill' will ingest "
+                   "matches, working backwards from either 'backfill_start' if present, the oldest record for this "
+                   "format in the database if any records are present, and the current time if the matches table is empty.")
+@click.option('--backfill_start', '-bs', type=int, help="This parameter is only used when the mode is backfill. "
+                                              "If provided, the backfill ingestion will start at this point in time.")
+@click.option('--backfill_end', '-be', type=int, help="This parameter is only used when the mode is backfill."
+                                              "match ingestion will stop once this timestamp is reached.")
+@click.option('--seen', '-s', type=click.Choice(SeenMatchBehavior), default=SeenMatchBehavior.exit,
               help="What to do when when the ingestion process encounters a match that already exists in the database. "
                    "'skip' will skip reprocessing matches that already have a record in the matches table, but the "
                    "ingestion process won't be halted. 'reprocess' will run matches that already have a record through"
                    "the match parser again, updating or adding any incomplete data. 'exit' will stop the execution of"
-                   "the ingestion process when a match that already has a record is encountered. If the mode is 'new' "
-                   "or 'historical', this parameter will default to 'exit', and if the mode is 'all, this parameter "
-                   "will default to 'skip'.")
-def scrape(ctx, format_id, mode, before, seen):
+                   "the ingestion process when a match that already has a record is encountered.")
+def scrape(ctx, format_id, mode, backfill_start, backfill_end, seen):
     # get the format id - default to current as specified in config if no value is provided
     format_id = current_app.config.get('CURRENT_FORMAT_ID') if format_id is None else format_id
     format = Format.query.get(format_id)
@@ -64,53 +61,52 @@ def scrape(ctx, format_id, mode, before, seen):
         click.echo("ERROR: format ID does not exist in database")
         exit(1)
 
-    comparison_timestamp = None
+    start_time = None
+    end_time = None
 
     if mode == Mode.new:
         error_file_name = f'scrape-new-{int(time.time())}.json'
         last_match = Match.query.filter_by(format_id=format.id).order_by(Match.upload_time.desc()).first()
-        comparison_timestamp = last_match.upload_time
+        if last_match is None:
+            click.echo("The matches table is currently empty. Please use backfill mode.")
+            return
+        end_time = last_match.upload_time
 
         if seen is None:
             seen = SeenMatchBehavior.exit
 
-        if seen != SeenMatchBehavior.exit:
-            click.echo(f"Error: when ingesting new matches, the only valid seen match behavior is to exit when an "
-                       f"existing match is encountered. To skip or reprocess seen matches, use 'all' mode instead." )
-            exit(1)
+        if backfill_start is not None or backfill_end is not None:
+            click.echo(f"Warning: 'backfill_start' and 'backfill_end' parameters are only used in backfill mode. "
+                       f"Provided values will be discarded.")
 
-        if before is not None:
-            click.echo(f"Warning: 'before' parameter is only used in historical mode. "
-                       f"Provided value {before} will be discarded.")
-
-        click.echo(f"Mode is 'new' and seen behavior is '{seen}'. The timestamp of the most recent match is "
-                   f"{comparison_timestamp} ({datetime.datetime.fromtimestamp(comparison_timestamp)}), matches newer "
+        click.echo(f"Mode is 'new' and seen behavior is '{seen.name}'. The timestamp of the most recent match is "
+                   f"{end_time} ({datetime.datetime.fromtimestamp(end_time)}), matches newer "
                    f"than this will be scraped.")
 
-    elif mode == Mode.all:
-        error_file_name = f'scrape-all-{int(time.time())}.json'
-        if seen is None:
-            seen = SeenMatchBehavior.skip
 
-        if before is not None:
-            click.echo(f"Warning: 'before' parameter is only used in historical mode. "
-                       f"Provided value {before} will be discarded.")
-
-        click.echo(f"Mode is 'all' and seen behavior is '{seen}'.")
-
-    elif mode == Mode.historical:
-        error_file_name = f'scrape-historical-{int(time.time())}.json'
+    elif mode == Mode.backfill:
+        error_file_name = f'scrape-backfill-{int(time.time())}.json'
         if seen is None:
             seen = SeenMatchBehavior.exit
 
-        if before is None:
+        if backfill_start is None:
             earliest_match = Match.query.filter_by(format_id=format.id).order_by(Match.upload_time.asc()).first()
-            comparison_timestamp = earliest_match.upload_time
+            if earliest_match is None:
+                start_time = datetime.datetime.now()
+            else:
+                start_time = earliest_match.upload_time
         else:
-            comparison_timestamp = before
+            start_time = backfill_start
 
-        click.echo(f"Mode is 'historical' and seen behavior is '{seen}'. Will look back for matches before unix time "
-                   f"'{comparison_timestamp}' ({datetime.datetime.fromtimestamp(comparison_timestamp)})")
+        stmnt = f"Mode is 'backfill' and seen behavior is '{seen.name}'. Will look for matches that occur "
+
+        if backfill_end is not None:
+            end_time = backfill_end
+            stmnt += f"before '{backfill_end}' ({datetime.datetime.fromtimestamp(end_time)}) and "
+
+        stmnt += f"after {start_time} ({datetime.datetime.fromtimestamp(start_time)})"
+        click.echo(stmnt)
+
     else:
         # here as a sanity check, should never be reached.
         click.echo(f"Error: mode '{mode}' has not been implemented.")
@@ -120,8 +116,8 @@ def scrape(ctx, format_id, mode, before, seen):
 
     # query showdown api for all matches in desired format.
     params = {"format": format.name}
-    if mode == Mode.historical:
-        params['before'] = comparison_timestamp
+    if mode == Mode.backfill:
+        params['before'] = start_time
 
     response = requests.get(list_replays_url, params=params)
     if response.status_code != 200:
@@ -133,9 +129,9 @@ def scrape(ctx, format_id, mode, before, seen):
     throw_if_exists = False if seen == SeenMatchBehavior.reprocess else True
     while len(matches_json) > 0:
         for match_json in matches_json:
-            if mode == Mode.new and match_json['uploadtime'] < comparison_timestamp:
-                click.echo(f"Match {match_json['id']} with timestamp {match_json['uploadtime']} is older than"
-                             f" {comparison_timestamp}. Match scraping is complete. Added {matches_added_count} matches "
+            if end_time is not None and match_json['uploadtime'] < end_time:
+                click.echo(f"Match {match_json['id']} with timestamp {match_json['uploadtime']} is older than end_time"
+                             f" {end_time}. Match scraping is complete. Added {matches_added_count} matches "
                              f"to database.")
                 # warm cache for format and most commonly used pokemon
                 ctx.invoke(warm, format_id=format_id, api_version=current_app.config['CURRENT_API_VERSION'])
