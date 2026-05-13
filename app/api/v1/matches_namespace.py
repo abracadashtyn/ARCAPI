@@ -413,8 +413,13 @@ class SearchMatches(Resource):
                 raise ValidationError("Invalid search paramters. If using team specification, must tie player_id to one of "
                                   "'team1' or 'team2'")
 
+            # join player_matches table for both teams regardless of whether team 2 is specified, otherwise searches
+            # for teams of 2+ pokemon don't work
+            query_dict['join'].append(f"player_matches as pm1 on m.id=pm1.match_id")
+            query_dict['join'].append(f"player_matches as pm2 on m.id=pm2.match_id")
+            query_dict['where'].append(f"pm1.player_id<pm2.player_id")
+
             if 'team1' in search_data:
-                query_dict['join'].append(f"player_matches as pm1 on m.id=pm1.match_id")
                 if 'player_id' in search_data['team1']:
                     query_dict['where'].append(f"pm1.player_id={search_data['team1']['player_id']}")
                 if 'is_winner' in search_data['team1']:
@@ -427,7 +432,6 @@ class SearchMatches(Resource):
                     query_dict = generate_pokemon_clauses(query_dict, search_data['team1']['pokemon'], 'pmp1')
 
             if 'team2' in search_data:
-                query_dict['join'].append(f"player_matches as pm2 on m.id=pm2.match_id")
                 if 'player_id' in search_data['team2']:
                     query_dict['where'].append(f"pm2.player_id={search_data['team2']['player_id']}")
                 if 'is_winner' in search_data['team2']:
@@ -438,9 +442,6 @@ class SearchMatches(Resource):
                 if 'pokemon' in search_data['team2'] and len(search_data['team2']['pokemon']) > 0:
                     query_dict['join'].append(f"pm_pokemon as pmp2 on pm2.id=pmp2.player_match_id")
                     query_dict = generate_pokemon_clauses(query_dict, search_data['team2']['pokemon'], 'pmp2')
-
-            if 'team1' in search_data and 'team2' in search_data:
-                query_dict['where'].append(f"pm1.player_id<pm2.player_id")
 
         # join to player_match to filter on player data
         if 'player_id' in search_data:
