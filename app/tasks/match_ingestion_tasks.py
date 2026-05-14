@@ -10,11 +10,11 @@ import requests
 from flask import current_app
 from sqlalchemy import literal_column, update, exists
 from sqlalchemy.orm import aliased
-from app import db, redis_cache
+from app import db
 from app.exceptions import AlreadyExistsException, CustomGameException
 from app.models import Format, Match, PlayerMatch, Player, PlayerMatchPokemon
 from app.tasks import bp
-from app.tasks.cache_operations import clear, warm
+from app.tasks.cache_operations import warm
 from app.tasks.showdown_match_parser import ShowdownMatchParser
 
 list_replays_url = "https://replay.pokemonshowdown.com/search.json"
@@ -92,7 +92,7 @@ def scrape(ctx, format_id, mode, backfill_start, backfill_end, seen):
         if backfill_start is None:
             earliest_match = Match.query.filter_by(format_id=format.id).order_by(Match.upload_time.asc()).first()
             if earliest_match is None:
-                start_time = datetime.datetime.now()
+                start_time = int(datetime.datetime.now().timestamp())
             else:
                 start_time = earliest_match.upload_time
         else:
@@ -121,7 +121,7 @@ def scrape(ctx, format_id, mode, backfill_start, backfill_end, seen):
 
     response = requests.get(list_replays_url, params=params)
     if response.status_code != 200:
-        click.echo(f"ERROR: Something went wrong searching showdown: {response}")
+        click.echo(f"ERROR: Something went wrong searching showdown: {response.status_code}: {response.text}")
         exit(3)
 
     matches_json = response.json()

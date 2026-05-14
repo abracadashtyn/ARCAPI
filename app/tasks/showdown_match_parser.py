@@ -258,7 +258,6 @@ class ShowdownMatchParser:
                 pokemon_name = line_parts[3].split(',')[0]
                 if pokemon_name.endswith("-*"):
                     pokemon_name = pokemon_name[:-2]
-                    print(f"removed wildcard from pokemon name '{line_parts[3]}' to get base name '{pokemon_name}'")
 
                 if line_parts[1] != 'poke':
                     raise GameLogParseException(f"Error parsing team log line '{line}'. Part 0 when split on '|' should "
