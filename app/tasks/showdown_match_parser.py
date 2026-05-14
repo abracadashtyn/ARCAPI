@@ -31,7 +31,7 @@ class ShowdownMatchParser:
             if log_from_json is not None:
                 log_string = log_from_json
             else:
-                replay_log_url = f"https://replay.pokemonshowdown.com/{self.match_record.format.name}-{self.match_record.showdown_id}.log"
+                replay_log_url = f"https://replay.pokemonshowdown.com/{self.match_record.get_showdown_url_string()}.log"
                 replay_log_response = requests.get(replay_log_url)
                 if replay_log_response.status_code != 200:
                     raise Exception(f"Something went wrong with web request: {replay_log_url}")
@@ -41,7 +41,8 @@ class ShowdownMatchParser:
 
 
     @classmethod
-    def construct_from_json(cls, match_json, format_id, wait, throw_if_exists=True, local=False):
+    def construct_from_json(cls, match_json, format_id, wait, throw_if_exists=True, local=False,
+                            replay_password=None):
         id_strings = match_json['id'].split("-")
         if len(id_strings) != 2:
             raise Exception(f"unable to parse match format {match_json['id']}")
@@ -58,9 +59,15 @@ class ShowdownMatchParser:
             match_record.rating = match_json["rating"]
             match_record.private = match_json["private"]
             match_record.format_id = format_id
+            match_record.replay_password = replay_password
             db.session.add(match_record)
             db.session.commit()
         else:
+            # If we now know a password for a record that didn't have one (e.g. originally scraped
+            # without it, now resubmitted with the full URL), backfill it.
+            if replay_password and not match_record.replay_password:
+                match_record.replay_password = replay_password
+                db.session.commit()
             if throw_if_exists:
                 raise AlreadyExistsException(f"Match ID {match_json['id']} already exists")
 

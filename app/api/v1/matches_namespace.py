@@ -219,10 +219,18 @@ class MatchList(Resource):
 
             if url_parts.path.endswith('.log'):
                 replay_url = urljoin(replay_url, url_parts.path.replace('.log', '.json'))
+                path_without_ext = url_parts.path[:-len('.log')]
             elif url_parts.path.endswith('.json'):
-                pass
+                path_without_ext = url_parts.path[:-len('.json')]
             else:
                 replay_url = urljoin(replay_url, url_parts.path + '.json')
+                path_without_ext = url_parts.path
+
+            # Pokemon Showdown appends a password segment to private/unlisted replay URLs after the
+            # numeric match id, e.g. /gen9vgc2026regibo3-2609807107-<password>. Capture it so we can
+            # reconstruct the playable URL later. Showdown's JSON `id` field omits this segment.
+            path_segments = path_without_ext.lstrip('/').split('-')
+            replay_password = '-'.join(path_segments[2:]) if len(path_segments) > 2 else None
 
             replay_response = requests.get(replay_url, timeout=10)
             if not replay_response.ok:
@@ -238,7 +246,8 @@ class MatchList(Resource):
                                code='UNSUPPORTED', status=400)
 
             match_parser = ShowdownMatchParser.construct_from_json(replay_json, format_record.id, wait=True,
-                                                                   throw_if_exists=True)
+                                                                   throw_if_exists=True,
+                                                                   replay_password=replay_password)
             match_parser.parse_log_details()
             return construct_match_detail_response(match_parser.match_record)
 
