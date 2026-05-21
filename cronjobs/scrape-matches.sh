@@ -65,12 +65,27 @@ echo "Duration: ${MINUTES}m ${SECONDS}s (${DURATION} seconds)"
 echo "Exit code: ${F5_EXIT_CODE}"
 echo "-----------------------------------------"
 
+/root/ReplayGenieAPI/venv/bin/flask showdown scrape -f 6
+/root/ReplayGenieAPI/venv/bin/flask showdown scrape -f 7
+/root/ReplayGenieAPI/venv/bin/flask showdown scrape -f 8
+/root/ReplayGenieAPI/venv/bin/flask showdown scrape -f 9
+LOWER_EXIT_CODE=$?
+END_LOWER_TIME=$(date +%s)
+END_LOWER_TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
+DURATION=$((END_LOWER_TIME - END_F5_TIME))
+MINUTES=$((DURATION / 60))
+SECONDS=$((DURATION % 60))
+echo "-----------------------------------------"
+echo "Done ingesting matches for less common gen 9 formats at ${END_LOWER_TIMESTAMP}"
+echo "Duration: ${MINUTES}m ${SECONDS}s (${DURATION} seconds)"
+echo "Exit code: ${LOWER_EXIT_CODE}"
+echo "-----------------------------------------"
 
 /root/ReplayGenieAPI/venv/bin/flask showdown assign-set -f 2
 FS2_EXIT_CODE=$?
 END_FS2_TIME=$(date +%s)
 END_FS2_TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
-DURATION=$((END_FS2_TIME - END_F5_TIME))
+DURATION=$((END_FS2_TIME - END_LOWER_TIME))
 MINUTES=$((DURATION / 60))
 SECONDS=$((DURATION % 60))
 echo "-----------------------------------------"
@@ -94,12 +109,12 @@ echo "Exit code: ${FS3_EXIT_CODE}"
 echo "-----------------------------------------"
 
 
-
+END_ALL_TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
 TOTAL_DURATION=$((END_FS3_TIME - START_TIME))
-MINUTES=$((DURATION / 60))
-SECONDS=$((DURATION % 60))
+MINUTES=$((TOTAL_DURATION / 60))
+SECONDS=$((TOTAL_DURATION % 60))
 echo "-----------------------------------------"
-echo "Job completed at ${END_P3_TIMESTAMP}"
-echo "Duration: ${MINUTES}m ${SECONDS}s (${DURATION} seconds)"
+echo "Job completed at ${END_ALL_TIMESTAMP}"
+echo "Duration: ${MINUTES}m ${SECONDS}s (${TOTAL_DURATION} seconds)"
 echo "========================================="
 echo ""
