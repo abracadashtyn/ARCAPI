@@ -50,6 +50,9 @@ class Match(db.Model):
     upload_time: so.Mapped[int] = so.mapped_column()
     rating: so.Mapped[Optional[int]] = so.mapped_column()
     private: so.Mapped[bool] = so.mapped_column()
+    # Access token appended to private/unlisted replay URLs by Pokemon Showdown. Required to fetch
+    # those replays publicly, so must be preserved when present.
+    replay_password: so.Mapped[Optional[str]] = so.mapped_column(sa.String(64), nullable=True)
 
     set_id: so.Mapped[Optional[int]] = so.mapped_column(index=True)
     position_in_set: so.Mapped[Optional[int]] = so.mapped_column()    # e.g. 2nd match out of 3 would have value 2 here
@@ -83,4 +86,7 @@ class Match(db.Model):
         return datetime.fromtimestamp(self.upload_time).isoformat()
 
     def get_showdown_url_string(self):
-        return f"{self.format.name}-{self.showdown_id}"
+        base = f"{self.format.name}-{self.showdown_id}"
+        if self.replay_password:
+            return f"{base}-{self.replay_password}"
+        return base
