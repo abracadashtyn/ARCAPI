@@ -279,12 +279,12 @@ class ShowdownMatchParser:
                     raise GameLogParseException(f"Error parsing team log line '{line}'. Team member not assignable to "
                                                 f"either p1 or p2!")
 
-            if len(p1_team) < 4:
-                raise GameLogParseException(f"Did not find enough pokemon to make up valid team for p1! "
-                                            f"\np1 team: {p1_team}\np2 team: {p2_team}")
-            elif len(p2_team) < 4:
-                raise GameLogParseException(f"Did not find enough pokemon to make up a valid team for p2! "
-                                            f"\np1 team: {p1_team}\np2 team: {p2_team}")
+            # thus far all errors I have seen thrown here have been players actually creating teams with not enough
+            # pokemon rather than parsing errors.
+            '''if len(p1_team) < 4 or len(p2_team) < 4:
+                raise GameLogParseException(f"Did not find enough pokemon to make up valid teams! "
+                                            f"\np1 team: {p1_team}"
+                                            f"\np2 team: {p2_team}")'''
 
             for pokemon_name in p1_team:
                 pokemon_record = Pokemon.query.filter_by(name=pokemon_name).first()

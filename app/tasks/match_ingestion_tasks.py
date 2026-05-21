@@ -2,6 +2,7 @@ import datetime
 import json
 import os
 import time
+import traceback
 import urllib
 from enum import Enum
 
@@ -160,7 +161,9 @@ def scrape(ctx, format_id, mode, backfill_start, backfill_end, seen):
                     continue
                 except Exception as e:
                     # any exception thrown beyond AlreadyExistsException is a genuine processing error. log it and continue
-                    click.echo(f"ERROR: problem processing match {match_json['id']}: {e}")
+                    click.echo(f"ERROR: problem processing match {match_json['id']}: {type(e).__name__}"
+                               f" {e.args[0] if e.args else ''}")
+                    click.echo(traceback.format_exc())
                     error_json = {
                         "showdown_id": match_json['id'],
                         "error": str(e),
@@ -420,8 +423,9 @@ def rerun_failed():
                     db.session.commit()
                 continue
             except Exception as e:
-                error_string = f"{type(e)} ({type(e).__name__}): str(e)"
+                error_string = f"{type(e).__name__}: {e.args[0] if e.args else ''}"
                 click.echo(f"ERROR: problem processing match {json_entry['showdown_id']}: {error_string}")
+                click.echo(traceback.format_exc())
                 jobs_failed_again.append({
                     "showdown_id": json_entry['showdown_id'],
                     "error": error_string,
