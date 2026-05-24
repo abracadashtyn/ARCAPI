@@ -477,6 +477,8 @@ pokemon_usage_model = api_v1.inherit('PokemonUsage', pokemon_base_species_model,
     'usage_change_percent': fields.Float(example=6.80),
 })
 usage_data_model = api_v1.model('UsageData', {
+    'prev_period_total_teams': fields.Integer(example=22791),
+    'current_period_total_teams': fields.Integer(example=22839),
     'increased': fields.List(fields.Nested(pokemon_usage_model)),
     'decreased': fields.List(fields.Nested(pokemon_usage_model)),
 })
@@ -584,6 +586,8 @@ class PokemonUsageChange(Resource):
         response = {
             'success': True,
             'data': {
+                'current_period_total_teams': current_period_total_teams,
+                'prev_period_total_teams': prev_period_total_teams,
                 'increased': [],
                 'decreased': []
             }
