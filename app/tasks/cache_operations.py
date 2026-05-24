@@ -41,6 +41,7 @@ def clear_pokemon():
 def clear_format():
     delete_keys("format_stats:v*")
     delete_keys("format_pokemon_stats:v1:*")
+    delete_keys("pokemon_usage_change:v1:*:*")
 
 def clear_best_matches():
     delete_keys(f"best_matches_prev_day:*")
@@ -81,6 +82,12 @@ def warm(ctx, format_id, api_version):
     try:
         format_detail = requests.get(format_url)
         if format_detail.status_code == 200:
+            # calculate pokemon usage change for the default lookback period (will do other lookback periods at a later
+            # time, but this one is used on the website's home page
+            usage_url = f"{current_app.config['BASE_URL']}/api/v{api_version}/pokemon/usage?format_id={format_id}"
+            click.echo(f"Calling {usage_url} to warm pokemon usage cache")
+            usage_details = requests.get(usage_url)
+
             pokemon_cache_keys = get_matching_keys(f"pokemon_stats:v{api_version}:{format_id}:*")
             pokemon_ids = [int(x.split(':')[-2]) for x in pokemon_cache_keys]
 
@@ -118,6 +125,13 @@ def warm(ctx, format_id, api_version):
             if best_prev_response.status_code != 200:
                 click.echo(f"ERROR: web request to warm cache for home page failed. "
                            f"{best_prev_response.status_code}: {best_prev_response.text} ")
+
+
+        # populate usage stats for non default lookback periods
+        for lookback in ['30days', 'day']:
+            usage_url = f"{current_app.config['BASE_URL']}/api/v{api_version}/pokemon/usage?format_id={format_id}&lookback={lookback}"
+            click.echo(f"Calling {usage_url} to warm pokemon usage cache for lookback {lookback}")
+            usage_details = requests.get(usage_url)
 
     except Exception as e:
         click.echo(f"ERROR: exception thrown while warming cache: {e}")

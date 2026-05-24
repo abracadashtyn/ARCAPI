@@ -6,7 +6,7 @@ from collections import Counter
 
 from flask import request, current_app
 from flask_restx import Namespace, fields, Resource
-from sqlalchemy import text
+from sqlalchemy import text, case, func, or_, distinct
 from sqlalchemy.exc import SQLAlchemyError
 
 from app import db, redis_cache
@@ -18,7 +18,7 @@ from app.api.v1.moves_namespace import move_model
 from app.api.v1.pagination import pagination_model, paginate_query
 from app.api.v1.players_namespace import player_model
 from app.api.v1.types_namespace import pokemon_type_model
-from app.models import Pokemon, PokemonType, Item, Match, Move, Player
+from app.models import Pokemon, PokemonType, Item, Match, Move, Player, PlayerMatchPokemon, PlayerMatch
 
 pokemon_ns = Namespace('Pokemon', description="Endpoints related to pokemon information.")
 api_v1.add_namespace(pokemon_ns, path='/pokemon')
@@ -462,5 +462,154 @@ class PokemonDetail(Resource):
 
         finally:
             db.session.execute(text(f"DROP TEMPORARY TABLE IF EXISTS {table_name}"))
+
+        return response
+
+pokemon_usage_model = api_v1.inherit('PokemonUsage', pokemon_base_species_model, {
+    'id': fields.Integer(example=19),
+    'name': fields.String(example="Rattata"),
+    'pokedex_number': fields.Integer(example=19),
+    'image_url': fields.String(example="https://arcvgc.com/static/images/pokemon/rattata.png"),
+    'prev_period_team_count': fields.Integer(example=3791),
+    'prev_period_team_percent': fields.Float(example=24.70),
+    'current_period_team_count': fields.Integer(example=3965),
+    'current_period_team_percent': fields.Float(example=17.90),
+    'usage_change_percent': fields.Float(example=6.80),
+})
+usage_data_model = api_v1.model('UsageData', {
+    'increased': fields.List(fields.Nested(pokemon_usage_model)),
+    'decreased': fields.List(fields.Nested(pokemon_usage_model)),
+})
+pokemon_usage_response = api_v1.model('PokemonListResponse', {
+    'success': fields.Boolean(example=True),
+    'data': fields.Nested(usage_data_model),
+})
+@pokemon_ns.route('/usage')
+class PokemonUsageChange(Resource):
+    @pokemon_ns.doc('usage_')
+    @pokemon_ns.param('format_id', description='Format ID', type='integer')
+    @pokemon_ns.param('lookback', type='str', enum=['week', 'day', '30days'], default='week')
+    @pokemon_ns.response(500, 'Internal server error', error_response)
+    @pokemon_ns.marshal_with(pokemon_usage_response, code=200)
+    def get(self):
+        logging.basicConfig(level=logging.INFO)
+
+        format_id = request.args.get('format_id', type=int) if 'format_id' in request.args \
+            else current_app.config['CURRENT_FORMAT_ID']
+        lookback = request.args.get('lookback', 'week')
+
+        # see if a cached response for this pokemon already exists, and if so, return that instead of recomputing stats
+        cache_key = f"pokemon_usage_change:v1:{format_id}:{lookback}"
+        cached_response = redis_cache.get(cache_key)
+        if cached_response is not None:
+            cached_response = json.loads(cached_response)
+            if cached_response['success'] is True:
+                logging.info(f"Serving PokemonUsageChange response from cache.")
+                return cached_response
+        logging.info(f"No cached PokemonUsageChange response found; computing stats now.")
+
+        # get all the matches from the last week in this format
+        current_period_end = None
+        prev_period_end = None
+        if lookback == 'day':
+            current_period_end = datetime.datetime.now() - datetime.timedelta(days=1)
+            prev_period_end = datetime.datetime.now() - datetime.timedelta(days=2)
+        elif lookback == 'week':
+            current_period_end = datetime.datetime.now() - datetime.timedelta(days=7)
+            prev_period_end = datetime.datetime.now() - datetime.timedelta(days=14)
+        elif lookback == '30days':
+            current_period_end = datetime.datetime.now() - datetime.timedelta(days=30)
+            prev_period_end = datetime.datetime.now() - datetime.timedelta(days=60)
+        else:
+            raise APIError(f"Error calculating usage stats for lookback window '{lookback}'",
+                           code='PYTHON_ERROR',  status=500)
+
+        current_period_end = int(current_period_end.timestamp())
+        prev_period_end = int(prev_period_end.timestamp())
+
+        current_period_match_count = db.session.query(
+            func.count('*')
+        ).select_from(
+            Match
+        ).filter(
+            Match.format_id == format_id,
+            Match.upload_time >= current_period_end
+        ).scalar()
+        current_period_total_teams = current_period_match_count * 2
+
+        prev_period_match_count = db.session.query(
+            func.count('*')
+        ).select_from(
+            Match
+        ).filter(
+            Match.format_id == format_id,
+            Match.upload_time < current_period_end,
+            Match.upload_time >= prev_period_end
+        ).scalar()
+        prev_period_total_teams = prev_period_match_count * 2
+
+        counts_base_query = db.select(
+            case((Pokemon.is_cosmetic_only == True, Pokemon.base_species_id), else_=Pokemon.id).label("pokemon_id"),
+            func.count(distinct(case((Match.upload_time >= current_period_end, PlayerMatch.id), else_=None))).label('current_team_count'),
+            func.count(distinct(case((Match.upload_time.between(prev_period_end, current_period_end), PlayerMatch.id), else_=None))).label('prev_team_count'),
+        ).select_from(
+            PlayerMatchPokemon
+        ).join(
+            PlayerMatch, PlayerMatchPokemon.player_match_id == PlayerMatch.id
+        ).join(
+            Match, PlayerMatch.match_id == Match.id
+        ).join(
+            Pokemon, PlayerMatchPokemon.pokemon_id == Pokemon.id
+        ).filter(
+            Match.format_id == format_id,
+            Match.upload_time >= prev_period_end
+        ).group_by(
+            case((Pokemon.is_cosmetic_only == True, Pokemon.base_species_id), else_=Pokemon.id),
+        ).subquery()
+
+        top_used = db.session.execute(db.select(
+            counts_base_query.c.pokemon_id,
+            counts_base_query.c.prev_team_count,
+            (counts_base_query.c.prev_team_count / prev_period_total_teams * 100).label('prev_team_percent'),
+            counts_base_query.c.current_team_count,
+            (counts_base_query.c.current_team_count / current_period_total_teams * 100).label('current_team_percent'),
+            (counts_base_query.c.current_team_count - counts_base_query.c.prev_team_count).label('usage_change_count'),
+            ((counts_base_query.c.current_team_count / current_period_total_teams * 100) - (counts_base_query.c.prev_team_count / prev_period_total_teams * 100)).label('usage_change_percent'),
+        ).filter(
+            or_(counts_base_query.c.prev_team_count > 0, counts_base_query.c.current_team_count > 0)
+        ).order_by(
+            ((counts_base_query.c.current_team_count / current_period_total_teams * 100) - (counts_base_query.c.prev_team_count / prev_period_total_teams * 100)).desc()
+        )).mappings().all()
+
+        response = {
+            'success': True,
+            'data': {
+                'increased': [],
+                'decreased': []
+            }
+        }
+
+        for top_positive in top_used[:10]:
+            pokemon_record = Pokemon.query.get(top_positive['pokemon_id']).to_dict()
+            pokemon_record['prev_period_team_count'] = top_positive['prev_team_count']
+            pokemon_record['prev_period_team_percent'] = float(round(top_positive['prev_team_percent'], 2))
+            pokemon_record['current_period_team_count'] = top_positive['current_team_count']
+            pokemon_record['current_period_team_percent'] = float(round(top_positive['current_team_percent'], 2))
+            pokemon_record['usage_change_percent'] = float(round(top_positive['usage_change_percent'], 2))
+            response['data']['increased'].append(pokemon_record)
+
+        for top_negative in reversed(top_used[-10:]):
+            pokemon_record = Pokemon.query.get(top_negative['pokemon_id']).to_dict()
+            pokemon_record['prev_period_team_count'] = top_negative['prev_team_count']
+            pokemon_record['prev_period_team_percent'] = float(round(top_negative['prev_team_percent'], 2))
+            pokemon_record['current_period_team_count'] = top_negative['current_team_count']
+            pokemon_record['current_period_team_percent'] = float(round(top_negative['current_team_percent'], 2))
+            pokemon_record['usage_change_percent'] = float(round(top_negative['usage_change_percent'], 2))
+            response['data']['decreased'].append(pokemon_record)
+
+        # store response in cache for faster retrieval next time. Cache duration is 35 min, but will be manually
+        # invalidated by ingestion method when new data is added
+        redis_cache.setex(cache_key, 2100, json.dumps(response))
+        logging.info(f"Stored response in cache with key {cache_key}")
 
         return response
