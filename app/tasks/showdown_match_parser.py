@@ -192,8 +192,8 @@ class ShowdownMatchParser:
                     if len(pkmn_info) != 12:
                         raise Exception(f"did not parse the expected 12 fields for pokemon team member: {pkmn_info}")
 
-                    if any(True for x in [1, 5, 6, 8, 9] if pkmn_info[x] != ""):
-                        raise Exception(f"One of the pokemon match info fields expected to be empty is not: {pkmn_info}")
+                    if any(True for x in [1, 6, 8, 9] if pkmn_info[x] != ""):
+                        logging.warning(f"One of the pokemon match info fields expected to be empty is not: {pkmn_info}")
 
                     # name field
                     pokemon_record = Pokemon.query.filter_by(name=pkmn_info[0]).first()
@@ -223,6 +223,11 @@ class ShowdownMatchParser:
                     # [4] = moveset. Should always be present so raise exception if this field is blank.
                     if pkmn_info[4] == "":
                         raise Exception(f"Moveset is null, which should not happen!")
+
+                    # [5] = nature. As of 5/29/2026 this field was just added for format_id 3
+                    # TODO see if this can be backfilled? And spin out into separate table once enough data is present.
+                    if pkmn_info[5] != "":
+                        pmp_record.nature = pkmn_info[5]
 
                     moves = pkmn_info[4].split(',')
                     move_ids = []
