@@ -54,6 +54,8 @@ class Match(db.Model):
     # those replays publicly, so must be preserved when present.
     replay_password: so.Mapped[Optional[str]] = so.mapped_column(sa.String(64), nullable=True)
 
+    tournament: so.Mapped[Optional[str]] = so.mapped_column(sa.String(50))
+
     set_id: so.Mapped[Optional[int]] = so.mapped_column(index=True)
     position_in_set: so.Mapped[Optional[int]] = so.mapped_column()    # e.g. 2nd match out of 3 would have value 2 here
 
@@ -86,7 +88,9 @@ class Match(db.Model):
         return datetime.fromtimestamp(self.upload_time).isoformat()
 
     def get_showdown_url_string(self):
-        base = f"{self.format.name}-{self.showdown_id}"
+        url = f"{self.format.name}-{self.showdown_id}"
         if self.replay_password:
-            return f"{base}-{self.replay_password}"
-        return base
+            url = f"{url}-{self.replay_password}"
+        if self.tournament:
+            url = f"{self.tournament}-{url}"
+        return url

@@ -407,8 +407,8 @@ def rerun_failed():
             click.echo(f"Processing match {json_entry['showdown_id']}\nOriginal error: '{json_entry['error']}'")
             match_parser = None
             try:
-                format_string_name = json_entry['showdown_id'].split('-')[0]
-                format_id = formats_dict[format_string_name]
+                id_strings = ShowdownMatchParser.parse_id_string(json_entry['showdown_id'])
+                format_id = formats_dict[id_strings['format_name']]
                 match_parser = ShowdownMatchParser.construct_from_json(json_entry['match_json'], format_id, wait=True,
                                                                        throw_if_exists=True)
                 match_parser.parse_log_details()

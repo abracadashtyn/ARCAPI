@@ -9,6 +9,7 @@ from flask import current_app
 from app import db
 from app.exceptions import AlreadyExistsException, CustomGameException, GameLogParseException
 from app.models import Match, Player, PlayerMatch, Pokemon, PokemonType, PlayerMatchPokemon, Item, Ability, Move
+from app.models.pokemon_info import Nature
 
 
 class ShowdownMatchParser:
@@ -39,27 +40,44 @@ class ShowdownMatchParser:
 
         self.log_lines = log_string.splitlines()
 
+    @classmethod
+    def parse_id_string(cls, json_match_id):
+        id_strings = json_match_id.split('-')
+        ids = {
+            'format_name': None,
+            'showdown_id': None,
+            'tournament_name': None,
+        }
+        if len(id_strings) == 2:
+            ids['format_name'] = id_strings[0]
+            ids['showdown_id'] = id_strings[1]
+        elif len(id_strings) == 3:
+            ids['tournament_name'] = id_strings[0]
+            ids['format_name'] = id_strings[1]
+            ids['showdown_id'] = id_strings[2]
+        else:
+            raise Exception(f"unable to parse match format {json_match_id}")
+
+        try:
+            ids['showdown_id'] = int(ids['showdown_id'])
+        except ValueError:
+            raise Exception(f"Showdown id '{ids['showdown_id']}' cannot be parsed as integer.")
+
+        return ids
 
     @classmethod
-    def construct_from_json(cls, match_json, format_id, wait, throw_if_exists=True, local=False,
-                            replay_password=None):
-        id_strings = match_json['id'].split("-")
-        if len(id_strings) != 2:
-            raise Exception(f"unable to parse match format {match_json['id']}")
-        try:
-            showdown_id = int(id_strings[1])
-        except ValueError:
-            raise Exception(f"Match ID {id_strings[1]} is not numeric; unsure how to handle. ")
-
-        match_record = Match.query.filter_by(showdown_id=showdown_id).first()
+    def construct_from_json(cls, match_json, format_id, wait, throw_if_exists=True, local=False, replay_password=None):
+        id_strings = ShowdownMatchParser.parse_id_string(match_json['id'])
+        match_record = Match.query.filter_by(showdown_id=id_strings['showdown_id']).first()
         if match_record is None:
             match_record = Match()
-            match_record.showdown_id = showdown_id
+            match_record.showdown_id = id_strings['showdown_id']
             match_record.upload_time = match_json["uploadtime"]
             match_record.rating = match_json["rating"]
             match_record.private = match_json["private"]
             match_record.format_id = format_id
             match_record.replay_password = replay_password
+            match_record.tournament = id_strings['tournament_name']
             db.session.add(match_record)
             db.session.commit()
         else:
@@ -224,11 +242,6 @@ class ShowdownMatchParser:
                     if pkmn_info[4] == "":
                         raise Exception(f"Moveset is null, which should not happen!")
 
-                    # [5] = nature. As of 5/29/2026 this field was just added for format_id 3
-                    # TODO see if this can be backfilled? And spin out into separate table once enough data is present.
-                    if pkmn_info[5] != "":
-                        pmp_record.nature = pkmn_info[5]
-
                     moves = pkmn_info[4].split(',')
                     move_ids = []
                     for move in moves:
@@ -240,6 +253,9 @@ class ShowdownMatchParser:
                     pmp_record.move_3_id = move_ids[2] if len(move_ids) >= 3 else None
                     pmp_record.move_4_id = move_ids[3] if len(move_ids) >= 4 else None
 
+                    # [5] = nature
+                    if pkmn_info[5] != "":
+                        pmp_record.nature_id = Nature.get_or_create(self.camel_case_to_spaced(pkmn_info[5])).id
 
                     # [11]=',,,,,<tera_type>]'
                     if pkmn_info[11] != "":

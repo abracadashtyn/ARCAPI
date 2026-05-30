@@ -2,6 +2,9 @@ import logging
 import sqlalchemy as sa
 import sqlalchemy.orm as so
 from typing import Optional, List
+
+from sqlalchemy import Index
+
 from app import db
 from app.models.pokemon_info import Pokemon, Ability, Item, PokemonType, Nature
 
@@ -52,17 +55,17 @@ class PlayerMatchPokemon(db.Model):
     pokemon_id: so.Mapped[int] = so.mapped_column(sa.Integer, sa.ForeignKey('pokemon.id'), index=True)
     pokemon: so.Mapped[Pokemon] = so.relationship(Pokemon, back_populates='player_matches')
 
-    ability_id: so.Mapped[Optional[int]] = so.mapped_column(sa.Integer, sa.ForeignKey('abilities.id'))
+    ability_id: so.Mapped[Optional[int]] = so.mapped_column(sa.Integer, sa.ForeignKey('abilities.id'), index=False)
     ability: so.Mapped[Optional[Ability]] = so.relationship(Ability)
 
-    item_id: so.Mapped[Optional[int]] = so.mapped_column(sa.Integer, sa.ForeignKey('items.id'))
+    item_id: so.Mapped[Optional[int]] = so.mapped_column(sa.Integer, sa.ForeignKey('items.id'), index=False)
     item: so.Mapped[Optional[Item]] = so.relationship(Item)
 
-    tera_type_id: so.Mapped[Optional[int]] = so.mapped_column(sa.Integer, sa.ForeignKey('pokemon_types.id'))
+    tera_type_id: so.Mapped[Optional[int]] = so.mapped_column(sa.Integer, sa.ForeignKey('pokemon_types.id'), index=False)
     tera_type: so.Mapped[Optional[PokemonType]] = so.relationship(PokemonType)
 
     nature: so.Mapped[Optional[str]] = so.mapped_column(sa.String(100))
-    nature_id: so.Mapped[Optional[int]] = so.mapped_column(sa.Integer, sa.ForeignKey('natures.id'))
+    nature_id: so.Mapped[Optional[int]] = so.mapped_column(sa.Integer, sa.ForeignKey('natures.id'), index=False)
 
     move_1_id: so.Mapped[Optional[int]] = so.mapped_column(sa.Integer, sa.ForeignKey('moves.id'), index=True)
     move_1: so.Mapped[Optional['Move']] = so.relationship('Move', foreign_keys=[move_1_id])
@@ -72,6 +75,11 @@ class PlayerMatchPokemon(db.Model):
     move_3: so.Mapped[Optional['Move']] = so.relationship('Move', foreign_keys=[move_3_id])
     move_4_id: so.Mapped[Optional[int]] = so.mapped_column(sa.Integer, sa.ForeignKey('moves.id'), index=True)
     move_4: so.Mapped[Optional['Move']] = so.relationship('Move', foreign_keys=[move_4_id])
+
+    __table_args__ = (
+        Index('idx_pm_pokemon_pokemon_player_match', 'pokemon_id', 'player_match_id'),
+        Index('idx_pm_pokemon_player_match_pokemon', 'player_match_id', 'pokemon_id'),
+    )
 
     def __repr__(self):
         return (f"<PlayerMatchPokemon id {self.id}, "
