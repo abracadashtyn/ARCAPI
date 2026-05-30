@@ -201,7 +201,31 @@ class Move(db.Model):
 
     @classmethod
     def get_or_create(cls, name: str):
-        name_no_spaces = name.replace(' ', '')
+        name_no_spaces = name.replace(' ', '').lower()
+        record = cls.query.filter(func.replace(cls.name, ' ', '') == name_no_spaces).first()
+        if record is None:
+            record = cls(name=name)
+            db.session.add(record)
+            db.session.commit()
+        return record
+
+class Nature(db.Model):
+    __tablename__ = 'natures'
+    id: so.Mapped[int] = so.mapped_column(autoincrement=True, primary_key=True)
+    name: so.Mapped[str] = so.mapped_column(sa.String(50))
+
+    def __repr__(self):
+        return f"<Nature id:{self.id}, name:{self.name}>"
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'name': self.name
+        }
+
+    @classmethod
+    def get_or_create(cls, name: str):
+        name_no_spaces = name.replace(' ', '').lower()
         record = cls.query.filter(func.replace(cls.name, ' ', '') == name_no_spaces).first()
         if record is None:
             record = cls(name=name)
