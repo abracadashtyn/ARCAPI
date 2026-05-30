@@ -3,7 +3,7 @@ import sqlalchemy as sa
 import sqlalchemy.orm as so
 from typing import Optional, List
 from app import db
-from app.models.pokemon_info import Pokemon, Ability, Item, PokemonType
+from app.models.pokemon_info import Pokemon, Ability, Item, PokemonType, Nature
 
 
 # defines the many-to-many relationship between the Players and Matches tables.
@@ -62,6 +62,7 @@ class PlayerMatchPokemon(db.Model):
     tera_type: so.Mapped[Optional[PokemonType]] = so.relationship(PokemonType)
 
     nature: so.Mapped[Optional[str]] = so.mapped_column(sa.String(100))
+    nature_id: so.Mapped[Optional[int]] = so.mapped_column(sa.Integer, sa.ForeignKey('natures.id'))
 
     move_1_id: so.Mapped[Optional[int]] = so.mapped_column(sa.Integer, sa.ForeignKey('moves.id'), index=True)
     move_1: so.Mapped[Optional['Move']] = so.relationship('Move', foreign_keys=[move_1_id])
@@ -73,7 +74,8 @@ class PlayerMatchPokemon(db.Model):
     move_4: so.Mapped[Optional['Move']] = so.relationship('Move', foreign_keys=[move_4_id])
 
     def __repr__(self):
-        return (f"<PlayerMatchPokemon id {self.id}, match:{self.player_match.match.get_showdown_url_string()} (id {self.player_match.match_id}), "
+        return (f"<PlayerMatchPokemon id {self.id}, "
+                f"match:{self.player_match.match.get_showdown_url_string()} (id {self.player_match.match_id}), "
                 f"player:{self.player_match.player.name} (id {self.player_match.player_id})>")
 
     def to_dict(self):
@@ -84,6 +86,7 @@ class PlayerMatchPokemon(db.Model):
             'ability_id': self.ability_id,
             'item_id': self.item_id,
             'tera_type_id': self.tera_type_id,
+            'nature_id': self.nature_id,
             'move_ids': [y.to_dict() for y in (self.move_1, self.move_2, self.move_3, self.move_4)],
         }
 
