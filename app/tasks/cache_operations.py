@@ -38,10 +38,12 @@ def clear_pokemon():
     delete_keys("pokemon_stats:v*")
 
 @cacheops.command('clear-format')
-def clear_format():
-    delete_keys("format_stats:v*")
-    delete_keys("format_pokemon_stats:v1:*")
-    delete_keys("pokemon_usage_change:v1:*:*")
+@click.option('--format_id', '-f', type=int)
+def clear_format(format_id):
+    delete_keys(f"format_stats:v1:{format_id}:*")
+    delete_keys(f"format_pokemon_stats:v1:{format_id}:*")
+    delete_keys(f"pokemon_usage_change:v1:{format_id}:*")
+    delete_keys(f"best_matches_prev_day:{format_id}")
 
 def clear_best_matches():
     delete_keys(f"best_matches_prev_day:*")
@@ -70,13 +72,11 @@ def warm(ctx, format_id, api_version):
         format_id = current_app.config.get('CURRENT_FORMAT_ID')
     
     #delete old format keys
-    ctx.invoke(clear_format)
+    ctx.invoke(clear_format, format_id=format_id)
 
     # recreate cache for format endpoint. If this format is the current one, cache 50 pokemon. Will only cache 10
     # for non-current pokemon as less people will be looking for that data.
-    #top_pokemon_count = 50 if format_id == current_app.config.get('CURRENT_FORMAT_ID') else 10
-    # TODO revert after last Reg I tournament in May
-    top_pokemon_count = 50 if format_id in (2,3) else 10
+    top_pokemon_count = 50 if format_id == current_app.config.get('CURRENT_FORMAT_ID') else 10
     format_url = f"{current_app.config['BASE_URL']}/api/v{api_version}/formats/{format_id}?top_pokemon_count={top_pokemon_count}"
     click.echo(f"Calling {format_url} to warm format cache")
     try:
@@ -118,8 +118,6 @@ def warm(ctx, format_id, api_version):
                        f"{format_detail.status_code}: {format_detail.text}")
 
         if api_version == 1:
-            # delete old cache key first
-            redis_cache.delete(f"best_matches_prev_day:{format_id}")
             # warm cache for new endpoint 'best_previous_day' that only exists in v1
             best_prev_day_url = f"{current_app.config['BASE_URL']}/api/v{api_version}/matches/best_previous_day?format_id={format_id}"
             click.echo(f"Calling {best_prev_day_url} to warm cache for home page top 50 matches in last 24 hours")
