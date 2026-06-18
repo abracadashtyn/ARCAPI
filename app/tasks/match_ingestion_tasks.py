@@ -193,6 +193,7 @@ def scrape(ctx, format_id, mode, backfill_start, backfill_end, seen):
             matches_json = []
 
     # warm cache for format and most commonly used pokemon
+    click.echo(f"Now warming cache for format.")
     ctx.invoke(warm, format_id=format_id, api_version=current_app.config['CURRENT_API_VERSION'])
 
 

@@ -87,6 +87,8 @@ def warm(ctx, format_id, api_version):
             usage_url = f"{current_app.config['BASE_URL']}/api/v{api_version}/pokemon/usage?format_id={format_id}"
             click.echo(f"Calling {usage_url} to warm pokemon usage cache")
             usage_details = requests.get(usage_url)
+            if not usage_details.ok:
+                click.echo(f"Failed to populate pokemon usage cache: {usage_details.status_code}: {usage_details.text}")
 
             pokemon_cache_keys = get_matching_keys(f"pokemon_stats:v{api_version}:{format_id}:*")
             pokemon_ids = [int(x.split(':')[-2]) for x in pokemon_cache_keys]
@@ -132,6 +134,9 @@ def warm(ctx, format_id, api_version):
             usage_url = f"{current_app.config['BASE_URL']}/api/v{api_version}/pokemon/usage?format_id={format_id}&lookback={lookback}"
             click.echo(f"Calling {usage_url} to warm pokemon usage cache for lookback {lookback}")
             usage_details = requests.get(usage_url)
+            if not usage_details.ok:
+                click.echo(
+                    f"Failed to populate pokemon usage cache: {usage_details.status_code}: {usage_details.text}")
 
     except Exception as e:
         click.echo(f"ERROR: exception thrown while warming cache: {e}")

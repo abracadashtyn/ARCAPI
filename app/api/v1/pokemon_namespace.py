@@ -595,20 +595,40 @@ class PokemonUsageChange(Resource):
 
         for top_positive in top_used[:10]:
             pokemon_record = Pokemon.query.get(top_positive['pokemon_id']).to_dict()
-            pokemon_record['prev_period_team_count'] = top_positive['prev_team_count']
-            pokemon_record['prev_period_team_percent'] = float(round(top_positive['prev_team_percent'], 2))
-            pokemon_record['current_period_team_count'] = top_positive['current_team_count']
-            pokemon_record['current_period_team_percent'] = float(round(top_positive['current_team_percent'], 2))
-            pokemon_record['usage_change_percent'] = float(round(top_positive['usage_change_percent'], 2))
+            pokemon_record['prev_period_team_count'] = top_positive['prev_team_count'] \
+                if top_positive['prev_team_count'] is not None \
+                else 0
+            pokemon_record['prev_period_team_percent'] = float(round(top_positive['prev_team_percent'], 2)) \
+                if top_positive['prev_team_percent'] is not None \
+                else 0
+            pokemon_record['current_period_team_count'] = top_positive['current_team_count'] \
+                if top_positive['current_team_count'] is not None \
+                else 0
+            pokemon_record['current_period_team_percent'] = float(round(top_positive['current_team_percent'], 2)) \
+                if top_positive['current_team_percent'] is not None \
+                else 0
+            pokemon_record['usage_change_percent'] = float(round(top_positive['usage_change_percent'], 2)) \
+                if top_positive['usage_change_percent'] is not None \
+                else 0
             response['data']['increased'].append(pokemon_record)
 
         for top_negative in reversed(top_used[-10:]):
             pokemon_record = Pokemon.query.get(top_negative['pokemon_id']).to_dict()
-            pokemon_record['prev_period_team_count'] = top_negative['prev_team_count']
-            pokemon_record['prev_period_team_percent'] = float(round(top_negative['prev_team_percent'], 2))
-            pokemon_record['current_period_team_count'] = top_negative['current_team_count']
-            pokemon_record['current_period_team_percent'] = float(round(top_negative['current_team_percent'], 2))
-            pokemon_record['usage_change_percent'] = float(round(top_negative['usage_change_percent'], 2))
+            pokemon_record['prev_period_team_count'] = top_negative['prev_team_count'] \
+                if top_negative['prev_team_count'] is not None \
+                else 0
+            pokemon_record['prev_period_team_percent'] = float(round(top_negative['prev_team_percent'], 2)) \
+                if top_negative['prev_team_percent'] is not None \
+                else 0
+            pokemon_record['current_period_team_count'] = top_negative['current_team_count'] \
+                if top_negative['current_team_count'] is not None \
+                else 0
+            pokemon_record['current_period_team_percent'] = float(round(top_negative['current_team_percent'], 2)) \
+                if top_negative['current_team_percent'] is not None \
+                else 0
+            pokemon_record['usage_change_percent'] = float(round(top_negative['usage_change_percent'], 2)) \
+                if top_negative['usage_change_percent'] is not None \
+                else 0
             response['data']['decreased'].append(pokemon_record)
 
         # store response in cache for faster retrieval next time. Cache duration is 35 min, but will be manually

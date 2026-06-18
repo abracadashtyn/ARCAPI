@@ -8,10 +8,10 @@ class Config(object):
     TERA_TYPE_IMAGES_DIR = os.path.join(STATIC_IMAGES_DIR, 'tera')
 
     # default delay to wait between requests when scraping data so as to not hammer APIs or get rate-limited
-    REQUEST_DELAY = 3
+    REQUEST_DELAY = 2
 
     # Config values for use in the UI
-    CURRENT_FORMAT_ID = 3
+    CURRENT_FORMAT_ID = 10
     MIN_ANDROID_VERSION = 1
     MIN_IOS_VERSION = 1
     MIN_WEB_VERSION = 1
