@@ -326,11 +326,15 @@ search_request_model = api_v1.model('SearchModel', {
     'player_name': fields.String(description="will be superceded by user_id field if both are provided."),
     'set_id': fields.Integer(example=300)
 })
-"""Helper method used for all pokemon filters (at base level and within team1 and team2) in search query."""
+"""Helper method used for all pokemon filters (at base level and within team1 and team2) in search query.
+All user-provided values are added to query_dict['params'] as named bind parameters rather than being
+interpolated into the SQL string, so user input is never treated as SQL."""
 def generate_pokemon_clauses(query_dict, pokemon_filter_list, pmp_table_alias):
     all_pokemon_or_clauses = []
-    for pokemon_filter in pokemon_filter_list:
+    for filter_index, pokemon_filter in enumerate(pokemon_filter_list):
         pokemon_where_conditions = []
+        # unique prefix per (alias, filter) pair so params don't collide across teams/filters
+        param_prefix = f"{pmp_table_alias}_{filter_index}"
 
         ids = [pokemon_filter['id']]
         # also check if any cosmetic children have matches
@@ -341,18 +345,26 @@ def generate_pokemon_clauses(query_dict, pokemon_filter_list, pmp_table_alias):
         ids += [x.id for x in children]
 
         if len(ids) == 1:
-            pokemon_where_conditions.append(f"{pmp_table_alias}.pokemon_id={pokemon_filter['id']}")
+            pokemon_where_conditions.append(f"{pmp_table_alias}.pokemon_id=:{param_prefix}_pokemon_id")
+            query_dict['params'][f"{param_prefix}_pokemon_id"] = pokemon_filter['id']
         else:
-            pokemon_where_conditions.append(f"{pmp_table_alias}.pokemon_id in ({','.join([str(x) for x in ids])})")
+            id_placeholders = []
+            for id_index, pokemon_id in enumerate(ids):
+                id_placeholders.append(f":{param_prefix}_pokemon_id_{id_index}")
+                query_dict['params'][f"{param_prefix}_pokemon_id_{id_index}"] = pokemon_id
+            pokemon_where_conditions.append(f"{pmp_table_alias}.pokemon_id in ({','.join(id_placeholders)})")
 
         if 'item_id' in pokemon_filter:
-            pokemon_where_conditions.append(f"{pmp_table_alias}.item_id={pokemon_filter['item_id']}")
+            pokemon_where_conditions.append(f"{pmp_table_alias}.item_id=:{param_prefix}_item_id")
+            query_dict['params'][f"{param_prefix}_item_id"] = pokemon_filter['item_id']
 
         if 'tera_type_id' in pokemon_filter:
-            pokemon_where_conditions.append(f"{pmp_table_alias}.tera_type_id={pokemon_filter['tera_type_id']}")
+            pokemon_where_conditions.append(f"{pmp_table_alias}.tera_type_id=:{param_prefix}_tera_type_id")
+            query_dict['params'][f"{param_prefix}_tera_type_id"] = pokemon_filter['tera_type_id']
 
         if 'ability_id' in pokemon_filter:
-            pokemon_where_conditions.append(f"{pmp_table_alias}.ability_id={pokemon_filter['ability_id']}")
+            pokemon_where_conditions.append(f"{pmp_table_alias}.ability_id=:{param_prefix}_ability_id")
+            query_dict['params'][f"{param_prefix}_ability_id"] = pokemon_filter['ability_id']
 
         all_pokemon_or_clauses.append(f"({' AND '.join(pokemon_where_conditions)})")
 
@@ -382,19 +394,25 @@ class SearchMatches(Resource):
             "group_by": [],
             "having": [],
             "order_by": [],
+            # named bind parameters for every user-provided value in the query. Values must never be
+            # interpolated into the SQL string itself, or the endpoint is open to SQL injection.
+            "params": {},
         }
         query_dict['select'].append("DISTINCT m.id")
         query_dict['from'].append("matches as m")
 
         # filters on the matches table
         if 'format_id' in search_data and search_data['format_id'] != "":
-            query_dict['where'].append(f"m.format_id={search_data['format_id']}")
+            query_dict['where'].append("m.format_id=:format_id")
+            query_dict['params']['format_id'] = search_data['format_id']
 
         if 'time_range' in search_data:
             if 'start' in search_data['time_range']:
-                query_dict['where'].append(f"m.upload_time >= {search_data['time_range']['start']}")
+                query_dict['where'].append("m.upload_time >= :time_range_start")
+                query_dict['params']['time_range_start'] = search_data['time_range']['start']
             if 'end' in search_data['time_range']:
-                query_dict['where'].append(f"m.upload_time <= {search_data['time_range']['end']}")
+                query_dict['where'].append("m.upload_time <= :time_range_end")
+                query_dict['params']['time_range_end'] = search_data['time_range']['end']
 
         if 'rating' in search_data:
             if 'unrated_only' in search_data['rating'] and search_data['rating']['unrated_only'] is True:
@@ -404,14 +422,17 @@ class SearchMatches(Resource):
 
                 query_dict['where'].append(f"m.rating is null")
 
-            if 'min' in search_data['rating'] and search_data.get('rating', 'min') != None:
-                query_dict['where'].append(f"m.rating >= {search_data['rating']['min']}")
+            if search_data['rating'].get('min') is not None:
+                query_dict['where'].append("m.rating >= :rating_min")
+                query_dict['params']['rating_min'] = search_data['rating']['min']
 
-            if 'max' in search_data['rating'] and search_data.get('rating', 'max') != None:
-                query_dict['where'].append(f"m.rating <= {search_data['rating']['max']}")
+            if search_data['rating'].get('max') is not None:
+                query_dict['where'].append("m.rating <= :rating_max")
+                query_dict['params']['rating_max'] = search_data['rating']['max']
 
         if 'set_id' in search_data:
-            query_dict['where'].append(f"m.set_id={search_data['set_id']}")
+            query_dict['where'].append("m.set_id=:set_id")
+            query_dict['params']['set_id'] = search_data['set_id']
 
         # team filters (mutually exclusive with player_id, player_name, and pokemon filters below)
         if 'team1' in search_data or 'team2' in search_data:
@@ -430,7 +451,8 @@ class SearchMatches(Resource):
 
             if 'team1' in search_data:
                 if 'player_id' in search_data['team1']:
-                    query_dict['where'].append(f"pm1.player_id={search_data['team1']['player_id']}")
+                    query_dict['where'].append("pm1.player_id=:team1_player_id")
+                    query_dict['params']['team1_player_id'] = search_data['team1']['player_id']
                 if 'is_winner' in search_data['team1']:
                     if search_data['team1']['is_winner'] is True:
                         query_dict['where'].append(f"pm1.won_match=1")
@@ -442,7 +464,8 @@ class SearchMatches(Resource):
 
             if 'team2' in search_data:
                 if 'player_id' in search_data['team2']:
-                    query_dict['where'].append(f"pm2.player_id={search_data['team2']['player_id']}")
+                    query_dict['where'].append("pm2.player_id=:team2_player_id")
+                    query_dict['params']['team2_player_id'] = search_data['team2']['player_id']
                 if 'is_winner' in search_data['team2']:
                     if search_data['team2']['is_winner'] is True:
                         query_dict['where'].append(f"pm2.won_match=1")
@@ -455,12 +478,14 @@ class SearchMatches(Resource):
         # join to player_match to filter on player data
         if 'player_id' in search_data:
             query_dict['join'].append(f"player_matches as pm on m.id=pm.match_id")
-            query_dict['where'].append(f"pm.player_id={search_data['player_id']}")
+            query_dict['where'].append("pm.player_id=:player_id")
+            query_dict['params']['player_id'] = search_data['player_id']
 
         elif 'player_name' in search_data:
             query_dict['join'].append(f"player_matches as pm on m.id=pm.match_id")
             query_dict['join'].append(f"players as p on pm.player_id=p.id")
-            query_dict['where'].append(f"p.name=\"{search_data['player_name']}\"")
+            query_dict['where'].append("p.name=:player_name")
+            query_dict['params']['player_name'] = search_data['player_name']
 
         # join to pm_pokemon to filter on pokemon data
         if 'pokemon' in search_data and len(search_data['pokemon']) > 0:
@@ -500,13 +525,19 @@ class SearchMatches(Resource):
         if len(query_dict['order_by']) > 0:
             query_string += f" ORDER BY {', '.join(query_dict['order_by'])}"
 
-        page = search_data['page'] if 'page' in search_data else 1
-        limit = search_data['limit'] if 'limit' in search_data else default_match_limit
+        # coerce pagination values to ints before they touch the query - they come from the request payload
+        try:
+            page = max(1, int(search_data.get('page') or 1))
+            limit = max(1, int(search_data.get('limit') or default_match_limit))
+        except (TypeError, ValueError):
+            raise ValidationError("'page' and 'limit' parameters must be integers.")
         offset = (page - 1) * limit
-        query_string += f" LIMIT {limit+1} OFFSET {offset}"
+        query_string += " LIMIT :result_limit OFFSET :result_offset"
+        query_dict['params']['result_limit'] = limit + 1
+        query_dict['params']['result_offset'] = offset
 
         #print(f"Constructed query:\n{query_string}\n-------")
-        match_search_results = db.session.execute(text(query_string)).all()
+        match_search_results = db.session.execute(text(query_string), query_dict['params']).all()
         match_ids = [x[0] for x in match_search_results]
 
         response_json = {
