@@ -220,7 +220,8 @@ class ShowdownMatchParser:
                     # in theory we should never hit this
                     if pokemon_record is None:
                         pokemon_record = Pokemon(name=pkmn_info[0])
-                        print("THIS IS A PREVIOUSLY UNSEEN POKEMON!! check if this works ")
+                        logging.warning(f"Previously unseen pokemon '{pkmn_info[0]}'; creating record and "
+                                        f"populating types from the match log.")
                         db.session.add(pokemon_record)
                         db.session.commit()
                         types = [x for x in pkmn_info[-1].split(',') if x != ""]

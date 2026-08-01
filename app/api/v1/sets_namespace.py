@@ -68,7 +68,7 @@ class SetList(Resource):
                 Match.set_id,
                 func.max(Match.rating).label('max_rating'),
                 func.count(Match.id).label('match_count'))\
-            .filter(Match.set_id is not None)\
+            .filter(Match.set_id.is_not(None))\
             .group_by(Match.set_id)
 
         if 'format_id' in request.args:

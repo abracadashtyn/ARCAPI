@@ -136,7 +136,16 @@ class PlayerDetail(Resource):
                 func.count(PlayerMatchPokemon.pokemon_id).label('usage_count')) \
             .join(PlayerMatchPokemon, PlayerMatchPokemon.pokemon_id == Pokemon.id) \
             .join(PlayerMatch, PlayerMatch.id == PlayerMatchPokemon.player_match_id) \
-            .filter(PlayerMatch.player_id == player_record.id) \
+            .filter(PlayerMatch.player_id == player_record.id)
+
+        # apply the format filter (and its join) before order_by/limit - sqlalchemy raises if join() is
+        # called on a query that already has LIMIT/OFFSET applied.
+        if 'format_id' in request.args:
+            pokemon_records_query = pokemon_records_query\
+                .join(Match, PlayerMatch.match_id == Match.id)\
+                .filter(Match.format_id == request.args['format_id'])
+
+        pokemon_records_query = pokemon_records_query \
             .group_by(
                 case(
                     (Pokemon.is_cosmetic_only == True, Pokemon.base_species_id),
@@ -144,11 +153,6 @@ class PlayerDetail(Resource):
                 )) \
             .order_by(func.count(PlayerMatchPokemon.pokemon_id).desc()) \
             .limit(6)
-
-        if 'format_id' in request.args:
-            pokemon_records_query = pokemon_records_query\
-                .join(Match, PlayerMatch.match_id == Match.id)\
-                .filter(Match.format_id == request.args['format_id'])
 
         pokemon_records = pokemon_records_query.all()
         response_data['most_used_pokemon'] = []

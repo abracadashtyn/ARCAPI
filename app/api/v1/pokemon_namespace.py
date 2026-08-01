@@ -186,7 +186,7 @@ class PokemonDetail(Resource):
         except SQLAlchemyError as e:
             raise APIError(f'Error querying database for pokemon with ID {pokemon_id}: {e}', code='DB_ERROR', status=500)
         if not pokemon_record:
-            raise NotFoundError('Pokemon with ID {pokemon_id} not found')
+            raise NotFoundError(f'Pokemon with ID {pokemon_id} not found')
 
         response = {
             'success': True,
