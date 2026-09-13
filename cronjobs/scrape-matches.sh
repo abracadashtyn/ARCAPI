@@ -4,113 +4,135 @@ START_TIME=$(date +%s)
 START_TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
 echo "========================================="
 echo "Job started at ${START_TIMESTAMP}"
-echo "-----------------------------------------"
 
 source /root/ReplayGenieAPI/.env.production
 cd /root/ReplayGenieAPI
 
-
+echo "-----------------------------------------"
+echo "Begin ingesting matches for format '[Gen 9 Champions] VGC 2026 Reg M-B' (ID=10)"
+echo "-----------------------------------------"
 /root/ReplayGenieAPI/venv/bin/flask showdown scrape -f 10
-F10_EXIT_CODE=$?
-END_F10_TIME=$(date +%s)
-END_F10_TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
-DURATION=$((END_F10_TIME - START_TIME))
+EXIT_CODE=$?
+END_TIME=$(date +%s)
+END_TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
+DURATION=$((END_TIME - PREV_JOB_END))
 MINUTES=$((DURATION / 60))
 SECONDS=$((DURATION % 60))
 echo "-----------------------------------------"
-echo "Done ingesting matches for format '[Gen 9 Champions] VGC 2026 Reg M-B' at ${END_F10_TIMESTAMP}"
+echo "Done ingesting matches for format '[Gen 9 Champions] VGC 2026 Reg M-B' (ID=10) at ${END_TIMESTAMP}"
 echo "Duration: ${MINUTES}m ${SECONDS}s (${DURATION} seconds)"
-echo "Exit code: ${F10_EXIT_CODE}"
+echo "Exit code: ${EXIT_CODE}"
 echo "-----------------------------------------"
+PREV_JOB_END = END_TIME
 
-
-/root/ReplayGenieAPI/venv/bin/flask showdown scrape -f 3
-F3_EXIT_CODE=$?
-END_F3_TIME=$(date +%s)
-END_F3_TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
-DURATION=$((END_F3_TIME - END_F10_TIME))
+echo "-----------------------------------------"
+echo "Begin ingesting matches for format '[Gen 9 Champions] VGC 2026 Reg M-C' (ID=11)"
+echo "-----------------------------------------"
+/root/ReplayGenieAPI/venv/bin/flask showdown scrape -f 11
+EXIT_CODE=$?
+END_TIME=$(date +%s)
+END_TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
+DURATION=$((END_TIME - START_TIME))
 MINUTES=$((DURATION / 60))
 SECONDS=$((DURATION % 60))
 echo "-----------------------------------------"
-echo "Done ingesting matches for format '[Gen 9 Champions] VGC 2026 Reg M-A' at ${END_F3_TIMESTAMP}"
+echo "Done ingesting matches for format '[Gen 9 Champions] VGC 2026 Reg M-C' (ID=11) at ${END_TIMESTAMP}"
 echo "Duration: ${MINUTES}m ${SECONDS}s (${DURATION} seconds)"
-echo "Exit code: ${F3_EXIT_CODE}"
+echo "Exit code: ${EXIT_CODE}"
 echo "-----------------------------------------"
+PREV_JOB_END = END_TIME
 
 
+
+echo "-----------------------------------------"
+echo "Begin ingesting matches for format '[Gen 9] OU' (ID=4)"
+echo "-----------------------------------------"
 /root/ReplayGenieAPI/venv/bin/flask showdown scrape -f 4
-F4_EXIT_CODE=$?
-END_F4_TIME=$(date +%s)
-END_F4_TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
-DURATION=$((END_F4_TIME - END_F3_TIME))
+EXIT_CODE=$?
+END_TIME=$(date +%s)
+END_TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
+DURATION=$((END_TIME - PREV_JOB_END))
 MINUTES=$((DURATION / 60))
 SECONDS=$((DURATION % 60))
 echo "-----------------------------------------"
-echo "Done ingesting matches for format '[Gen 9] OU' at ${END_F4_TIMESTAMP}"
+echo "Done ingesting matches for format '[Gen 9] OU' (ID=4) at ${END_TIMESTAMP}"
 echo "Duration: ${MINUTES}m ${SECONDS}s (${DURATION} seconds)"
-echo "Exit code: ${F4_EXIT_CODE}"
+echo "Exit code: ${EXIT_CODE}"
 echo "-----------------------------------------"
+PREV_JOB_END = END_TIME
 
-
+echo "-----------------------------------------"
+echo "Begin ingesting matches for format '[Gen 9] Doubles OU' (ID=5)"
+echo "-----------------------------------------"
 /root/ReplayGenieAPI/venv/bin/flask showdown scrape -f 5
-F5_EXIT_CODE=$?
-END_F5_TIME=$(date +%s)
-END_F5_TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
-DURATION=$((END_F5_TIME - END_F4_TIME))
+EXIT_CODE=$?
+END_TIME=$(date +%s)
+END_TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
+DURATION=$((END_TIME - PREV_JOB_END))
 MINUTES=$((DURATION / 60))
 SECONDS=$((DURATION % 60))
 echo "-----------------------------------------"
-echo "Done ingesting matches for format '[Gen 9] Doubles OU' at ${END_F5_TIMESTAMP}"
+echo "Done ingesting matches for format '[Gen 9] Doubles OU' (ID=5) at ${END_TIMESTAMP}"
 echo "Duration: ${MINUTES}m ${SECONDS}s (${DURATION} seconds)"
-echo "Exit code: ${F5_EXIT_CODE}"
+echo "Exit code: ${EXIT_CODE}"
 echo "-----------------------------------------"
+PREV_JOB_END = END_TIME
 
+echo "-----------------------------------------"
+echo "Begin ingesting matches for lower tier Gen 9 formats (IDs=6,7,8,9)"
+echo "-----------------------------------------"
 /root/ReplayGenieAPI/venv/bin/flask showdown scrape -f 6
 /root/ReplayGenieAPI/venv/bin/flask showdown scrape -f 7
 /root/ReplayGenieAPI/venv/bin/flask showdown scrape -f 8
 /root/ReplayGenieAPI/venv/bin/flask showdown scrape -f 9
-LOWER_EXIT_CODE=$?
-END_LOWER_TIME=$(date +%s)
-END_LOWER_TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
-DURATION=$((END_LOWER_TIME - END_F5_TIME))
+EXIT_CODE=$?
+END_TIME=$(date +%s)
+END_TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
+DURATION=$((END_TIME - PREV_JOB_END))
 MINUTES=$((DURATION / 60))
 SECONDS=$((DURATION % 60))
 echo "-----------------------------------------"
-echo "Done ingesting matches for less common gen 9 formats at ${END_LOWER_TIMESTAMP}"
+echo "Done ingesting matches for format '[Gen 9] Doubles OU' (ID=5) at ${END_TIMESTAMP}"
 echo "Duration: ${MINUTES}m ${SECONDS}s (${DURATION} seconds)"
-echo "Exit code: ${LOWER_EXIT_CODE}"
+echo "Exit code: ${EXIT_CODE}"
 echo "-----------------------------------------"
+PREV_JOB_END = END_TIME
 
+echo "-----------------------------------------"
+echo "Assigning sets to all newly ingested matches for format '[Gen 9 Champions] VGC 2026 Reg M-C' (ID=11)"
+echo "-----------------------------------------"
+/root/ReplayGenieAPI/venv/bin/flask showdown assign-set -f 11
+EXIT_CODE=$?
+END_TIME=$(date +%s)
+END_TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
+DURATION=$((END_TIME - PREV_JOB_END))
+MINUTES=$((DURATION / 60))
+SECONDS=$((DURATION % 60))
+echo "-----------------------------------------"
+echo "Done assiging sets to matches for format '[Gen 9 Champions] VGC 2026 Reg M-C' (ID=11) at ${END_TIMESTAMP}"
+echo "Duration: ${MINUTES}m ${SECONDS}s (${DURATION} seconds)"
+echo "Exit code: ${EXIT_CODE}"
+echo "-----------------------------------------"
+PREV_JOB_END = END_TIME
+
+echo "-----------------------------------------"
+echo "Assigning sets to all newly ingested matches for format '[Gen 9 Champions] VGC 2026 Reg M-B' (ID=10)"
+echo "-----------------------------------------"
 /root/ReplayGenieAPI/venv/bin/flask showdown assign-set -f 10
-FS10_EXIT_CODE=$?
-END_FS10_TIME=$(date +%s)
-END_FS10_TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
-DURATION=$((END_FS10_TIME - END_LOWER_TIME))
+EXIT_CODE=$?
+END_TIME=$(date +%s)
+END_TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
+DURATION=$((END_TIME - PREV_JOB_END))
 MINUTES=$((DURATION / 60))
 SECONDS=$((DURATION % 60))
 echo "-----------------------------------------"
-echo "Done assigning set ids to all newly ingested matches with format_id=10 at ${END_FS10_TIMESTAMP}"
+echo "Done assiging sets to matches for format '[Gen 9 Champions] VGC 2026 Reg M-B' (ID=10) at ${END_TIMESTAMP}"
 echo "Duration: ${MINUTES}m ${SECONDS}s (${DURATION} seconds)"
-echo "Exit code: ${FS10_EXIT_CODE}"
+echo "Exit code: ${EXIT_CODE}"
 echo "-----------------------------------------"
-
-
-/root/ReplayGenieAPI/venv/bin/flask showdown assign-set -f 3
-FS3_EXIT_CODE=$?
-END_FS3_TIME=$(date +%s)
-END_FS3_TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
-DURATION=$((END_FS3_TIME - END_FS10_TIME))
-MINUTES=$((DURATION / 60))
-SECONDS=$((DURATION % 60))
-echo "-----------------------------------------"
-echo "Done assigning set ids to all newly ingested matches with format_id=3 at ${END_FS3_TIMESTAMP}"
-echo "Duration: ${MINUTES}m ${SECONDS}s (${DURATION} seconds)"
-echo "Exit code: ${FS3_EXIT_CODE}"
-echo "-----------------------------------------"
-
 
 END_ALL_TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
-TOTAL_DURATION=$((END_FS3_TIME - START_TIME))
+TOTAL_DURATION=$((END_TIME - START_TIME))
 MINUTES=$((TOTAL_DURATION / 60))
 SECONDS=$((TOTAL_DURATION % 60))
 echo "-----------------------------------------"
