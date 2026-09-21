@@ -61,6 +61,10 @@ def create_app(config_class=None):
     from app.api.v1 import bp as api_v1_bp
     app.register_blueprint(api_v1_bp)
 
+    # HTML link previews for social/chat crawlers; nginx routes them here, browsers never do.
+    from app.preview import bp as preview_bp
+    app.register_blueprint(preview_bp)
+
     # make sure all static image directories exist
     os.makedirs(app.config['STATIC_IMAGES_DIR'], exist_ok=True)
     os.makedirs(app.config['POKEMON_IMAGES_DIR'], exist_ok=True)
