@@ -62,25 +62,8 @@ def echo_keys():
         if cursor == 0:
             return
 
-@cacheops.command('warm')
-@click.pass_context
-@click.option('--format_id', '-f', type=int)
-@click.option('--api_version', '-v', type=int, default=1, help="Version of the API to warm the cache for.")
-def warm(ctx, format_id, api_version):
-    """Refresh the cache for a format IN PLACE: the home-page aggregates are computed here in the CLI process and
-    overwrite their keys, so users keep being served the previous values while new ones are computed. (The old
-    delete-then-recompute-via-HTTP flow left the home page uncached for minutes per cycle and tied up API workers.)"""
-    if api_version == 0:
-        click.echo("WARNING: api v0 is deprecated. No cache is maintained for these endpoints any longer.")
-        delete_keys("*:v0:*")
-        return
-
-    if format_id is None:
-        format_id = current_app.config.get('CURRENT_FORMAT_ID')
-
-    # format_stats (format record + match counts) is cheap to recompute on demand; just drop it
-    delete_keys(f"format_stats:v1:{format_id}:*")
-
+def _refresh_home_page_cache(format_id, api_version):
+    """Recompute the home-page aggregates in-process and overwrite their cache keys; returns the top pokemon list."""
     # 1. top pokemon list for the format (all-time), overwritten in place
     top_pokemon_list = []
     try:
@@ -122,6 +105,35 @@ def warm(ctx, format_id, api_version):
                 click.echo(f"ERROR: best matches search for format {format_id} did not succeed: {best_prev}")
         except Exception as e:
             click.echo(f"ERROR: failed to refresh best matches of previous day for format {format_id}: {e}")
+
+    return top_pokemon_list
+
+
+@cacheops.command('warm')
+@click.pass_context
+@click.option('--format_id', '-f', type=int)
+@click.option('--api_version', '-v', type=int, default=1, help="Version of the API to warm the cache for.")
+def warm(ctx, format_id, api_version):
+    """Refresh the cache for a format IN PLACE: the home-page aggregates are computed here in the CLI process and
+    overwrite their keys, so users keep being served the previous values while new ones are computed. (The old
+    delete-then-recompute-via-HTTP flow left the home page uncached for minutes per cycle and tied up API workers.)"""
+    if api_version == 0:
+        click.echo("WARNING: api v0 is deprecated. No cache is maintained for these endpoints any longer.")
+        delete_keys("*:v0:*")
+        return
+
+    if format_id is None:
+        format_id = current_app.config.get('CURRENT_FORMAT_ID')
+
+    # format_stats (format record + match counts) is cheap to recompute on demand; just drop it
+    delete_keys(f"format_stats:v1:{format_id}:*")
+
+    # Serialising pokemon/match records builds absolute image URLs with url_for(), which needs a request context;
+    # bind one to the public base URL so the cached payloads match what the API serves.
+    with current_app.test_request_context(base_url=current_app.config['BASE_URL']):
+        top_pokemon_list = _refresh_home_page_cache(format_id, api_version)
+
+    # 4. per-pokemon detail for the most used pokemon, via the API as before. If this format is the current one,
 
     # 4. per-pokemon detail for the most used pokemon, via the API as before. If this format is the current one,
     # cache 50 pokemon; only 10 for non-current formats as less people will be looking for that data.
