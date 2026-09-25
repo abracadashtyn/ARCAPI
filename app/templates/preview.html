@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ preview.title }}</title>
+    <link rel="canonical" href="{{ preview.url }}">
+    <meta name="description" content="{{ preview.description }}">
+
+    <!-- Open Graph (Discord, Facebook, iMessage, Slack, etc.) -->
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="{{ site_name }}">
+    <meta property="og:title" content="{{ preview.title }}">
+    <meta property="og:description" content="{{ preview.description }}">
+    <meta property="og:image" content="{{ preview.image_url }}">
+    <meta property="og:url" content="{{ preview.url }}">
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="{{ preview.twitter_card }}">
+    <meta name="twitter:title" content="{{ preview.title }}">
+    <meta name="twitter:description" content="{{ preview.description }}">
+    <meta name="twitter:image" content="{{ preview.image_url }}">
+</head>
+<body>
+    <h1>{{ preview.title }}</h1>
+    <p style="white-space: pre-line">{{ preview.description }}</p>
+    <p><a href="{{ preview.url }}">Open in {{ site_name }}</a></p>
+</body>
+</html>
