@@ -550,38 +550,63 @@ class PokemonUsageChange(Resource):
         ).scalar()
         prev_period_total_teams = prev_period_match_count * 2
 
-        counts_base_query = db.select(
-            case((Pokemon.is_cosmetic_only == True, Pokemon.base_species_id), else_=Pokemon.id).label("pokemon_id"),
-            func.count(distinct(case((Match.upload_time >= current_period_end, PlayerMatch.id), else_=None))).label('current_team_count'),
-            func.count(distinct(case((Match.upload_time.between(prev_period_end, current_period_end), PlayerMatch.id), else_=None))).label('prev_team_count'),
+        # the query optimizer tries to filter on pokemon_id first if the format_id and upload_filter are not applied first in a subquery
+        filtered_matches = db.select(
+            PlayerMatch.id.label('player_match_id'),
+            Match.upload_time.label('upload_time'),
         ).select_from(
-            PlayerMatchPokemon
+            Match
+        ).with_hint(
+            Match.__table__, 'FORCE INDEX (idx_matches_format_upload)', dialect_name='mysql'
         ).join(
-            PlayerMatch, PlayerMatchPokemon.player_match_id == PlayerMatch.id
-        ).join(
-            Match, PlayerMatch.match_id == Match.id
-        ).join(
-            Pokemon, PlayerMatchPokemon.pokemon_id == Pokemon.id
+            PlayerMatch, PlayerMatch.match_id == Match.id
         ).filter(
             Match.format_id == format_id,
-            Match.upload_time >= prev_period_end
+            Match.upload_time >= prev_period_end,
+        ).subquery()
+
+        # second subquery is necessary to materialize current_team_count and prev_team_count, so it's not recalculated
+        # each time the value is used in the actual query below.
+        counts_base_query = db.select(
+            case((Pokemon.is_cosmetic_only == True, Pokemon.base_species_id), else_=Pokemon.id).label("pokemon_id"),
+            func.count(distinct(
+                case((filtered_matches.c.upload_time >= current_period_end, PlayerMatchPokemon.id), else_=None))).label(
+                'current_team_count'),
+            func.count(distinct(case(
+                (filtered_matches.c.upload_time.between(prev_period_end, current_period_end), PlayerMatchPokemon.id),
+                else_=None))).label('prev_team_count'),
+        ).select_from(
+            filtered_matches
+        ).join(
+            PlayerMatchPokemon, PlayerMatchPokemon.player_match_id == filtered_matches.c.player_match_id
+        ).join(
+            Pokemon, PlayerMatchPokemon.pokemon_id == Pokemon.id
         ).group_by(
             case((Pokemon.is_cosmetic_only == True, Pokemon.base_species_id), else_=Pokemon.id),
         ).subquery()
 
-        top_used = db.session.execute(db.select(
+        # calculate the team usage percents outside the final query as they're used several times. The syntax below
+        # prevents any division by 0 errors if there are no teams at all in either the current or previous period.
+        prev_team_percent_expr = func.coalesce(
+            counts_base_query.c.prev_team_count / func.nullif(prev_period_total_teams, 0) * 100, 0)
+        current_team_percent_expr = func.coalesce(
+            counts_base_query.c.current_team_count / func.nullif(current_period_total_teams, 0) * 100, 0)
+
+        top_used_query = db.select(
             counts_base_query.c.pokemon_id,
             counts_base_query.c.prev_team_count,
-            (counts_base_query.c.prev_team_count / prev_period_total_teams * 100).label('prev_team_percent'),
+            prev_team_percent_expr.label('prev_team_percent'),
             counts_base_query.c.current_team_count,
-            (counts_base_query.c.current_team_count / current_period_total_teams * 100).label('current_team_percent'),
+            current_team_percent_expr.label('current_team_percent'),
             (counts_base_query.c.current_team_count - counts_base_query.c.prev_team_count).label('usage_change_count'),
-            ((counts_base_query.c.current_team_count / current_period_total_teams * 100) - (counts_base_query.c.prev_team_count / prev_period_total_teams * 100)).label('usage_change_percent'),
+            (current_team_percent_expr - prev_team_percent_expr).label('usage_change_percent'),
         ).filter(
             or_(counts_base_query.c.prev_team_count > 0, counts_base_query.c.current_team_count > 0)
         ).order_by(
-            ((counts_base_query.c.current_team_count / current_period_total_teams * 100) - (counts_base_query.c.prev_team_count / prev_period_total_teams * 100)).desc()
-        )).mappings().all()
+            (current_team_percent_expr - prev_team_percent_expr).desc()
+        )
+        #print(str(top_used_query.compile(dialect=db.engine.dialect, compile_kwargs={"literal_binds": True})))
+        top_used = db.session.execute(top_used_query).mappings().all()
 
         response = {
             'success': True,
