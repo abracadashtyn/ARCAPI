@@ -23,7 +23,7 @@ echo "Done ingesting matches for format '[Gen 9 Champions] VGC 2026 Reg M-B' (ID
 echo "Duration: ${MINUTES}m ${SECONDS}s (${DURATION} seconds)"
 echo "Exit code: ${EXIT_CODE}"
 echo "-----------------------------------------"
-PREV_JOB_END = END_TIME
+PREV_JOB_END = $END_TIME
 
 echo "-----------------------------------------"
 echo "Begin ingesting matches for format '[Gen 9 Champions] VGC 2026 Reg M-C' (ID=11)"
@@ -40,7 +40,7 @@ echo "Done ingesting matches for format '[Gen 9 Champions] VGC 2026 Reg M-C' (ID
 echo "Duration: ${MINUTES}m ${SECONDS}s (${DURATION} seconds)"
 echo "Exit code: ${EXIT_CODE}"
 echo "-----------------------------------------"
-PREV_JOB_END = END_TIME
+PREV_JOB_END = $END_TIME
 
 
 
@@ -59,7 +59,7 @@ echo "Done ingesting matches for format '[Gen 9] OU' (ID=4) at ${END_TIMESTAMP}"
 echo "Duration: ${MINUTES}m ${SECONDS}s (${DURATION} seconds)"
 echo "Exit code: ${EXIT_CODE}"
 echo "-----------------------------------------"
-PREV_JOB_END = END_TIME
+PREV_JOB_END = $END_TIME
 
 echo "-----------------------------------------"
 echo "Begin ingesting matches for format '[Gen 9] Doubles OU' (ID=5)"
@@ -76,7 +76,7 @@ echo "Done ingesting matches for format '[Gen 9] Doubles OU' (ID=5) at ${END_TIM
 echo "Duration: ${MINUTES}m ${SECONDS}s (${DURATION} seconds)"
 echo "Exit code: ${EXIT_CODE}"
 echo "-----------------------------------------"
-PREV_JOB_END = END_TIME
+PREV_JOB_END = $END_TIME
 
 echo "-----------------------------------------"
 echo "Begin ingesting matches for lower tier Gen 9 formats (IDs=6,7,8,9)"
@@ -96,7 +96,7 @@ echo "Done ingesting matches for format '[Gen 9] Doubles OU' (ID=5) at ${END_TIM
 echo "Duration: ${MINUTES}m ${SECONDS}s (${DURATION} seconds)"
 echo "Exit code: ${EXIT_CODE}"
 echo "-----------------------------------------"
-PREV_JOB_END = END_TIME
+PREV_JOB_END = $END_TIME
 
 echo "-----------------------------------------"
 echo "Assigning sets to all newly ingested matches for format '[Gen 9 Champions] VGC 2026 Reg M-C' (ID=11)"
@@ -113,7 +113,7 @@ echo "Done assiging sets to matches for format '[Gen 9 Champions] VGC 2026 Reg M
 echo "Duration: ${MINUTES}m ${SECONDS}s (${DURATION} seconds)"
 echo "Exit code: ${EXIT_CODE}"
 echo "-----------------------------------------"
-PREV_JOB_END = END_TIME
+PREV_JOB_END = $END_TIME
 
 echo "-----------------------------------------"
 echo "Assigning sets to all newly ingested matches for format '[Gen 9 Champions] VGC 2026 Reg M-B' (ID=10)"
