@@ -557,7 +557,6 @@ class BestMatchesFromPreviousDay(Resource):
     def get(self):
         logging.basicConfig(level=logging.INFO)
         format_id = request.args.get('format_id', current_app.config['CURRENT_FORMAT_ID'], type=int)
-        print(f"Format ID: {format_id}")
         cache_key = f"best_matches_prev_day:{format_id}"
         cached_response = redis_cache.get(cache_key)
         if cached_response is not None:
