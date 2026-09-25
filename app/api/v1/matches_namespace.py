@@ -12,6 +12,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import selectinload
 
 from app import db, redis_cache, limiter
+from app.home_stats import HOME_CACHE_TTL_SECONDS
 from app.api.v1 import api_v1
 from app.api.v1.abilities_namespace import ability_model
 from app.api.v1.errors import APIError, error_response, NotFoundError, ValidationError
@@ -580,7 +581,7 @@ class BestMatchesFromPreviousDay(Resource):
         response = SearchMatches.perform_search(search_data)
         if response['success'] is True:
             response.pop('pagination')
-            redis_cache.setex(cache_key, 2100, json.dumps(response))
+            redis_cache.setex(cache_key, HOME_CACHE_TTL_SECONDS, json.dumps(response))
             logging.info(f"Stored response for top 50 best matches today in cache with key {cache_key}")
 
         return response

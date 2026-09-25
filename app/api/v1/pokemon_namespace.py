@@ -18,6 +18,7 @@ from app.api.v1.moves_namespace import move_model
 from app.api.v1.pagination import pagination_model, paginate_query
 from app.api.v1.players_namespace import player_model
 from app.api.v1.types_namespace import pokemon_type_model
+from app.home_stats import compute_pokemon_usage_change, HOME_CACHE_TTL_SECONDS
 from app.models import Pokemon, PokemonType, Item, Match, Move, Player, PlayerMatchPokemon, PlayerMatch
 
 pokemon_ns = Namespace('Pokemon', description="Endpoints related to pokemon information.")
@@ -509,131 +510,15 @@ class PokemonUsageChange(Resource):
                 logging.info(f"Serving PokemonUsageChange response from cache.")
                 return cached_response
         logging.info(f"No cached PokemonUsageChange response found; computing stats now.")
-
-        # get all the matches from the last week in this format
-        current_period_end = None
-        prev_period_end = None
-        if lookback == 'day':
-            current_period_end = datetime.datetime.now() - datetime.timedelta(days=1)
-            prev_period_end = datetime.datetime.now() - datetime.timedelta(days=2)
-        elif lookback == 'week':
-            current_period_end = datetime.datetime.now() - datetime.timedelta(days=7)
-            prev_period_end = datetime.datetime.now() - datetime.timedelta(days=14)
-        elif lookback == '30days':
-            current_period_end = datetime.datetime.now() - datetime.timedelta(days=30)
-            prev_period_end = datetime.datetime.now() - datetime.timedelta(days=60)
-        else:
+        try:
+            response = compute_pokemon_usage_change(format_id, lookback)
+        except ValueError:
             raise APIError(f"Error calculating usage stats for lookback window '{lookback}'",
                            code='PYTHON_ERROR',  status=500)
 
-        current_period_end = int(current_period_end.timestamp())
-        prev_period_end = int(prev_period_end.timestamp())
-
-        current_period_match_count = db.session.query(
-            func.count('*')
-        ).select_from(
-            Match
-        ).filter(
-            Match.format_id == format_id,
-            Match.upload_time >= current_period_end
-        ).scalar()
-        current_period_total_teams = current_period_match_count * 2
-
-        prev_period_match_count = db.session.query(
-            func.count('*')
-        ).select_from(
-            Match
-        ).filter(
-            Match.format_id == format_id,
-            Match.upload_time < current_period_end,
-            Match.upload_time >= prev_period_end
-        ).scalar()
-        prev_period_total_teams = prev_period_match_count * 2
-
-        counts_base_query = db.select(
-            case((Pokemon.is_cosmetic_only == True, Pokemon.base_species_id), else_=Pokemon.id).label("pokemon_id"),
-            func.count(distinct(case((Match.upload_time >= current_period_end, PlayerMatch.id), else_=None))).label('current_team_count'),
-            func.count(distinct(case((Match.upload_time.between(prev_period_end, current_period_end), PlayerMatch.id), else_=None))).label('prev_team_count'),
-        ).select_from(
-            PlayerMatchPokemon
-        ).join(
-            PlayerMatch, PlayerMatchPokemon.player_match_id == PlayerMatch.id
-        ).join(
-            Match, PlayerMatch.match_id == Match.id
-        ).join(
-            Pokemon, PlayerMatchPokemon.pokemon_id == Pokemon.id
-        ).filter(
-            Match.format_id == format_id,
-            Match.upload_time >= prev_period_end
-        ).group_by(
-            case((Pokemon.is_cosmetic_only == True, Pokemon.base_species_id), else_=Pokemon.id),
-        ).subquery()
-
-        top_used = db.session.execute(db.select(
-            counts_base_query.c.pokemon_id,
-            counts_base_query.c.prev_team_count,
-            (counts_base_query.c.prev_team_count / prev_period_total_teams * 100).label('prev_team_percent'),
-            counts_base_query.c.current_team_count,
-            (counts_base_query.c.current_team_count / current_period_total_teams * 100).label('current_team_percent'),
-            (counts_base_query.c.current_team_count - counts_base_query.c.prev_team_count).label('usage_change_count'),
-            ((counts_base_query.c.current_team_count / current_period_total_teams * 100) - (counts_base_query.c.prev_team_count / prev_period_total_teams * 100)).label('usage_change_percent'),
-        ).filter(
-            or_(counts_base_query.c.prev_team_count > 0, counts_base_query.c.current_team_count > 0)
-        ).order_by(
-            ((counts_base_query.c.current_team_count / current_period_total_teams * 100) - (counts_base_query.c.prev_team_count / prev_period_total_teams * 100)).desc()
-        )).mappings().all()
-
-        response = {
-            'success': True,
-            'data': {
-                'current_period_total_teams': current_period_total_teams,
-                'prev_period_total_teams': prev_period_total_teams,
-                'increased': [],
-                'decreased': []
-            }
-        }
-
-        for top_positive in top_used[:10]:
-            pokemon_record = Pokemon.query.get(top_positive['pokemon_id']).to_dict()
-            pokemon_record['prev_period_team_count'] = top_positive['prev_team_count'] \
-                if top_positive['prev_team_count'] is not None \
-                else 0
-            pokemon_record['prev_period_team_percent'] = float(round(top_positive['prev_team_percent'], 2)) \
-                if top_positive['prev_team_percent'] is not None \
-                else 0
-            pokemon_record['current_period_team_count'] = top_positive['current_team_count'] \
-                if top_positive['current_team_count'] is not None \
-                else 0
-            pokemon_record['current_period_team_percent'] = float(round(top_positive['current_team_percent'], 2)) \
-                if top_positive['current_team_percent'] is not None \
-                else 0
-            pokemon_record['usage_change_percent'] = float(round(top_positive['usage_change_percent'], 2)) \
-                if top_positive['usage_change_percent'] is not None \
-                else 0
-            response['data']['increased'].append(pokemon_record)
-
-        for top_negative in reversed(top_used[-10:]):
-            pokemon_record = Pokemon.query.get(top_negative['pokemon_id']).to_dict()
-            pokemon_record['prev_period_team_count'] = top_negative['prev_team_count'] \
-                if top_negative['prev_team_count'] is not None \
-                else 0
-            pokemon_record['prev_period_team_percent'] = float(round(top_negative['prev_team_percent'], 2)) \
-                if top_negative['prev_team_percent'] is not None \
-                else 0
-            pokemon_record['current_period_team_count'] = top_negative['current_team_count'] \
-                if top_negative['current_team_count'] is not None \
-                else 0
-            pokemon_record['current_period_team_percent'] = float(round(top_negative['current_team_percent'], 2)) \
-                if top_negative['current_team_percent'] is not None \
-                else 0
-            pokemon_record['usage_change_percent'] = float(round(top_negative['usage_change_percent'], 2)) \
-                if top_negative['usage_change_percent'] is not None \
-                else 0
-            response['data']['decreased'].append(pokemon_record)
-
-        # store response in cache for faster retrieval next time. Cache duration is 35 min, but will be manually
-        # invalidated by ingestion method when new data is added
-        redis_cache.setex(cache_key, 2100, json.dumps(response))
+        # store response in cache for faster retrieval next time. The cache warmer refreshes this key in place after
+        # each ingestion cycle; the TTL is only a backstop if warming fails
+        redis_cache.setex(cache_key, HOME_CACHE_TTL_SECONDS, json.dumps(response))
         logging.info(f"Stored response in cache with key {cache_key}")
 
         return response

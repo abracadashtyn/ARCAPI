@@ -12,6 +12,7 @@ from app.api.v1 import api_v1
 from app.api.v1.errors import APIError, error_response, NotFoundError
 from app.api.v1.pagination import pagination_model, paginate_query
 from app.api.v1.pokemon_namespace import teammate_frequency_model
+from app.home_stats import compute_format_top_pokemon, HOME_CACHE_TTL_SECONDS
 from app.models import Format, Match, PlayerMatchPokemon, PlayerMatch, Pokemon
 
 format_ns = Namespace('Formats', description='Endpoints related to game format, as specified by showdown API.')
@@ -105,36 +106,9 @@ class FormatDetail(Resource):
         top_pokemon_cache_key = f"format_pokemon_stats:v1:{format_id}:{lookback}"
         top_pokemon_list = redis_cache.get(top_pokemon_cache_key)
         if top_pokemon_list is None:
-            # no cached top mons, must do search again
-            top_pokemon_query = db.session.query(
-                case(
-                    (Pokemon.is_cosmetic_only == True, Pokemon.base_species_id),
-                    else_=Pokemon.id
-                ).label("pokemon_id"),
-                func.count('*').label('pokemon_count')
-            ).select_from(
-                PlayerMatchPokemon
-            ).join(
-                PlayerMatch, PlayerMatchPokemon.player_match_id == PlayerMatch.id
-            ).join(
-                Match, PlayerMatch.match_id == Match.id
-            ).join(
-                Pokemon, PlayerMatchPokemon.pokemon_id == Pokemon.id
-            ).filter(
-                Match.format_id == format_id,
-            ).group_by(
-                case(
-                    (Pokemon.is_cosmetic_only == True, Pokemon.base_species_id),
-                    else_=Pokemon.id
-                ),
-            ).order_by(
-                func.count('*').desc()
-            )
-            if lookback_time is not None:
-                top_pokemon_query = top_pokemon_query.filter(Match.upload_time >= int(lookback_time.timestamp()))
-
-            top_pokemon_list = [(x[0], x[1]) for x in top_pokemon_query.all()]
-            redis_cache.setex(top_pokemon_cache_key, 2100, json.dumps(top_pokemon_list))
+            # no cached top mons, must do search again (normally the cache warmer keeps this key populated in place)
+            top_pokemon_list = compute_format_top_pokemon(format_id, lookback_time)
+            redis_cache.setex(top_pokemon_cache_key, HOME_CACHE_TTL_SECONDS, json.dumps(top_pokemon_list))
             logging.info(f"Stored top pokemon list in cache with key {top_pokemon_cache_key}")
         else:
             top_pokemon_list = json.loads(top_pokemon_list)
